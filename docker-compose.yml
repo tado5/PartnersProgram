@@ -1,0 +1,25 @@
+name: partnerseuropodlahy
+
+services:
+  db:
+    image: mariadb:11.4
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:?Set MARIADB_ROOT_PASSWORD in .env}
+      MARIADB_DATABASE: europodlahy
+      DB_APP_PASSWORD: ${DB_APP_PASSWORD:?Set DB_APP_PASSWORD in .env}
+      DB_MIGRATE_PASSWORD: ${DB_MIGRATE_PASSWORD:?Set DB_MIGRATE_PASSWORD in .env}
+      TZ: UTC
+    ports:
+      - "127.0.0.1:3308:3306"
+    volumes:
+      - ./.data/mariadb:/var/lib/mysql
+      - ./docker/mariadb/conf.d:/etc/mysql/conf.d:ro
+      - ./docker/mariadb/init:/docker-entrypoint-initdb.d:ro
+      - ./docker/mariadb/grant-app-privileges.sh:/docker/grant-app-privileges.sh:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
