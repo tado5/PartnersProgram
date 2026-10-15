@@ -144,7 +144,7 @@ Partneri → Nový partner → Uložiť → Detail → „Vygenerovať QR“
 
 ### 2.9 Verejná karta – `/k/[token]`
 - **Kto:** Pa (ktokoľvek s platným QR/NFC).
-- **Zobrazuje (iba tieto polia):** spoločné logo aplikácie, názov prevádzkujúcej firmy, zobrazované meno, kód partnera, body celkom, hrubý obrat s DPH, čistý obrat bez DPH, body a oba obraty za aktuálny mesiac, odznak aktuálneho mesiaca, počet mesiacov za každý tier a históriu ocenených mesiacov (mesiac, odznak, obrat bez DPH), históriu nákupov (dátum, suma s DPH, suma bez DPH, sadzba DPH, body, osobne/neosobne). Firma je odvodená z tokenu; vlastné firemné logá sa vo fáze 5A neriešia.
+- **Zobrazuje (iba tieto polia):** logo a názov prevádzkujúcej firmy, zobrazované meno, kód partnera, body celkom, hrubý obrat s DPH, čistý obrat bez DPH, body a oba obraty za aktuálny mesiac, odznak aktuálneho mesiaca, počet mesiacov za každý tier a históriu ocenených mesiacov (mesiac, odznak, obrat bez DPH), históriu nákupov (dátum, suma s DPH, suma bez DPH, sadzba DPH, body, osobne/neosobne). Firma aj logo sú odvodené z tokenu.
 - **Nezobrazuje:** poznámku, kontakty, IČO, predavača, zmazané nákupy, interné ID, iné tokeny.
 - **Akcie:** iba prezeranie a stránkovanie.
 - **Údaje:** `getPublicCard(token)` / `GET /api/public/card/{token}`; 20 nákupov na stránku, bez cache; pri zobrazení sa aktualizuje posledné použitie tokenu.
@@ -178,6 +178,26 @@ Partneri → Nový partner → Uložiť → Detail → „Vygenerovať QR“
 - **Údaje:** `/api/users`.
 
 ## 3. Navigácia podľa roly
+
+### Informovanie o spracúvaní údajov
+
+**Nastavenia firmy → Ochrana osobných údajov:** admin skontroluje predvyplnený dokument a údaje prevádzkovateľa, uloží návrh a publikuje nemennú verziu. Publikovať možno iba uložený návrh, ktorý sa odvtedy nezmenil. Superadmin má iba náhľad. Text sa zobrazuje bez HTML; predvyplnené právne podmienky a retenčné pravidlá musí firma overiť podľa svojej prevádzky.
+
+**Hlavný dokument GDPR** je verejne na `/gdpr`, dostupný aj z úvodnej stránky bez prihlásenia a stiahnuteľný ako PDF. Nový firemný návrh automaticky obsahuje pripravený text bez zástupných značiek, názov a IČO z firemného profilu. Sídlo a kontaktný e-mail treba pri prvom použití doplniť, keďže v profile firmy nie sú uložené. Existujúce návrhy ani publikované verzie sa automaticky neprepisujú. Sekcia **Zobraziť alebo upraviť podmienky a lehoty** umožňuje voliteľnú úpravu textu; **Obnoviť predvolené znenie** vyžaduje potvrdenie pri nahradení vlastných úprav. Uloženie a publikovanie zostáva výslovným krokom admina. Firemné PDF je vždy pripnuté ku konkrétnej publikovanej verzii.
+
+Predvolené retenčné pravidlá: profil/nákupy/body počas účasti + najviac 3 roky, audit/bezpečnostné logy 12 mesiacov, tokeny 12 mesiacov od deaktivácie, evidencia informovania počas účasti + 3 roky a žiadosti podľa ich vybavenia, exporty najviac 30 dní, obmena záloh najviac 90 dní. Sú to prednastavené pravidlá na posúdenie a dodržiavanie firmou, nie zákonné lehoty ani zapnutie automatického čistenia. Pri zmenách treba upraviť firemný text. Pred publikovaním treba overiť právne základy a konkrétne technické služby; kapitola o prenosoch sama nepotvrdzuje lokalitu hostingu.
+
+**Nový partner:** bez publikovaného oznámenia sa zobrazí blokovanie a odkaz do nastavení. Po publikovaní formulár vyžaduje skutočný spôsob a čas poskytnutia aktuálnej verzie a nezaškrtnuté potvrdenie admina, že ide o skutočný záznam. Čas zadáva podľa časového pásma zariadenia; server ho uloží v UTC. Záznam nie je súhlas ani dôkaz prečítania.
+
+**Detail partnera:** stav informovania, história verzií/dátumov/spôsobov a zaznamenávajúcich používateľov. Vlastný admin môže pridať záznam k skutočne poskytnutej publikovanej verzii. Pri ďalšom zázname musí uviesť dôvod; história sa neprepisuje. Zoznam partnerov má filter nezaevidovaného/zaevidovaného poskytnutia, ktorý rešpektuje aj CSV export. Existujúce záznamy sa automaticky nedopĺňajú.
+
+**Verejná karta:** upozornenie na súkromný charakter odkazu a odkaz „Ochrana osobných údajov“, ak firma má oznámenie. Verejné oznámenie neobsahuje partnerov token ani osobné údaje partnera, je dostupné aj bez karty a umožňuje tlač prehliadačom. Predchádzajúca verzia je dostupná cez `?version=N`. Existujúce karty a nákupy zostávajú dostupné aj bez publikovaného oznámenia.
+
+### Logo firmy (bod A)
+
+V **Nastaveniach firmy → Logo firmy** môže vlastný admin nahrať alebo odstrániť logo. Povolené sú PNG, JPEG a WebP do 2 MiB, najviac 16 miliónov vstupných pixelov; server obrázok otočí podľa orientácie, zmenší do 512 × 256 px a uloží ako PNG bez metadát. SVG, GIF a animované obrázky nie sú podporované. Superadmin má po výbere firmy iba náhľad.
+
+Logo sa zobrazí v rozbalenom bočnom menu, mobilnej hlavičke a menu, verejnej partnerskej karte a PDF reporte. Bez loga sa používa názov firmy; globálne menu superadmina si ponecháva pôvodnú značku. Po zmene sa obnoví aktuálna obrazovka; ostatné otvorené karty uvidia zmenu po načítaní. Už stiahnuté PDF sa nemení. Pravidlá programu a kontaktný profil (bod B) sú iba možným budúcim vylepšením v implementačnom pláne; aktuálne nie sú požadované ani plánované na implementáciu.
 Navigácia je bočný panel (spoločný komponent `AppShell` pre `/app` aj `/superadmin`). Na desktope (≥ `lg`) je stále viditeľný a dá sa zbaliť na úzky pruh s ikonami; stav sa pamätá v `localStorage`. Na telefóne je panel skrytý a otvára sa tlačidlom ☰ v hornej lište ako vysúvací panel (zatvorí sa krížikom, klepnutím mimo, klávesom Esc alebo po prechode na inú stránku). V päte panela je meno, rola a odhlásenie; pás s názvom firmy zostáva nad obsahom.
 
 | Položka | SA | A | P |

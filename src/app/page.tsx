@@ -75,6 +75,7 @@ export default function Home() {
 
       <footer className="border-t border-stone-200 py-5 text-xs text-stone-500">
         Europodlahy · Partnerský evidenčný systém
+        {" · "}<Link href="/gdpr" className="underline">Ochrana osobných údajov</Link>
       </footer>
     </main>
   );

@@ -5,6 +5,7 @@ import { useState, type FormEvent } from "react";
 
 import { refreshPartnerViews } from "@/app/app/partneri/actions";
 import { useCompanyApi } from "@/components/company-context";
+import { PrivacyReceiptFields, privacyPayload } from "./privacy-receipt-fields";
 
 type PartnerValues = {
   type: "installer" | "company" | "referrer";
@@ -29,9 +30,10 @@ type ApiResponse = {
 };
 
 export function PartnerForm({
-  partner,
+  partner, privacyNotice,
 }: {
   partner?: PartnerValues & { id: string; code: string };
+  privacyNotice?: { id: string; version: number; url: string };
 }) {
   const { companyFetch, companyId, selectionId } = useCompanyApi();
   const router = useRouter();
@@ -81,6 +83,12 @@ export function PartnerForm({
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const payload: Record<string, unknown> = Object.fromEntries(data.entries());
+    if (!partner && privacyNotice) {
+      const privacy = privacyPayload(data, privacyNotice.id);
+      if (!privacy) { setError("Vyplňte platný dátum a čas poskytnutia oznámenia."); return; }
+      for (const field of ["privacyMethod", "privacyProvidedAt", "privacyConfirmed"]) delete payload[field];
+      payload.privacy = privacy;
+    }
     if (partner) {
       for (const field of ["phone", "email", "contactPerson", "ico", "internalNote"]) {
         if (payload[field] === "") payload[field] = null;
@@ -96,6 +104,7 @@ export function PartnerForm({
           Kód partnera: <strong>{partner.code}</strong> (nemeniteľný)
         </div>
       ) : null}
+      {!partner && privacyNotice ? <PrivacyReceiptFields version={privacyNotice.version} noticeUrl={privacyNotice.url} /> : null}
       <div className="grid gap-5 sm:grid-cols-2">
         <label className="block text-sm font-medium text-stone-700">
           Typ partnera *
@@ -177,7 +186,7 @@ export function PartnerForm({
           rows={4}
         />
       </label>
-      {error ? <p aria-live="polite" className="text-sm text-red-700">{error}</p> : null}
+      {error ? <p role="alert" aria-live="polite" className="text-sm text-red-700">{error}</p> : null}
       {duplicates.length ? (
         <div className="rounded-lg border border-amber-300 bg-amber-50 p-4">
           <p className="font-medium text-amber-950">

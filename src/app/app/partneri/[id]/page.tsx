@@ -13,6 +13,8 @@ import { requireCompanyPage } from "@/server/auth/session";
 import { parseUserId } from "@/server/auth/http";
 import { prisma } from "@/server/db";
 import { listPartnerAuditLogs } from "@/server/repositories/audit-logs";
+import { PartnerPrivacy } from "@/components/partners/partner-privacy";
+import { listPrivacyReceipts } from "@/server/privacy-receipts";
 
 export default async function PartnerDetailPage({
   params,
@@ -71,6 +73,12 @@ export default async function PartnerDetailPage({
     listPartnerAuditLogs(context, partnerId, 0, 50),
   ]);
   if (!partner) notFound();
+  const [privacyReceipts, privacyNotices] = await Promise.all([
+    listPrivacyReceipts(context.companyId, partner.id),
+    prisma.companyPrivacyNotice.findMany({
+      where: { companyId: context.companyId }, orderBy: { version: "desc" }, select: { id: true, version: true },
+    }),
+  ]);
   const monthGrossAmount = monthTotal._sum.amount?.toFixed(2) ?? "0.00";
   const monthNetAmount = monthTotal._sum.netAmount?.toFixed(2) ?? "0.00";
   const currentBadge = getMonthlyBadge(monthNetAmount, {
@@ -117,6 +125,9 @@ export default async function PartnerDetailPage({
           updatedAt: partner.updatedAt.toISOString(),
         }}
       />
+      <PartnerPrivacy partnerId={partner.id.toString()} companySlug={context.company.slug}
+        receipts={privacyReceipts} notices={privacyNotices.map((notice) => ({ ...notice, id: notice.id.toString() }))}
+        readOnly={context.user.role !== "admin"} timeZone={env.APP_TIMEZONE} />
       <PartnerTokenManager
         partnerId={partner.id.toString()}
         partnerName={partner.displayName}

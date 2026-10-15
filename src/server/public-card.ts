@@ -6,6 +6,8 @@ import { env } from "@/lib/env";
 import { badgeLabel, getMonthlyBadge, type BadgeTier } from "@/lib/monthly-badges";
 import { zonedMonthRange } from "@/lib/dates";
 import { prisma } from "./db";
+import { companyLogoDataUrl } from "@/lib/company-logo";
+import { currentPrivacyNotice } from "./privacy";
 
 const pageSize = 20;
 
@@ -24,6 +26,8 @@ export async function getPublicCard(token: string, page: number, now = new Date(
       company: {
         select: {
           name: true,
+          slug: true,
+          logoData: true,
           vatRatePercent: true,
           bronzeMonthlyTurnoverEur: true,
           silverMonthlyTurnoverEur: true,
@@ -34,6 +38,7 @@ export async function getPublicCard(token: string, page: number, now = new Date(
     },
   });
   if (!tokenRecord) return null;
+  const privacy = await currentPrivacyNotice(tokenRecord.companyId);
 
   const month = zonedMonthRange(now, env.APP_TIMEZONE);
   const purchasesWhere = {
@@ -89,6 +94,8 @@ export async function getPublicCard(token: string, page: number, now = new Date(
 
   return {
     companyName: tokenRecord.company.name,
+    privacyUrl: privacy ? `/ochrana-udajov/${tokenRecord.company.slug}` : null,
+    companyLogoUrl: companyLogoDataUrl(tokenRecord.company.logoData),
     displayName: tokenRecord.partner.displayName,
     code: tokenRecord.partner.code,
     totalPoints: lifetime._sum.points ?? 0,

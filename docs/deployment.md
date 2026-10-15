@@ -59,6 +59,10 @@ Pred seedovaním vyplňte v `.env` `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` a
 - Healthcheck `healthcheck.sh --connect --innodb_initialized`.
 
 ## 6. Pripojenie aplikácie na DB
+Migrácia `20261015120000_privacy_notices` pridáva tabuľky návrhov, verziovaných oznámení a histórie informovania. Pred spustením novej verzie aplikácie aplikujte `npm run db:deploy` a potom `npm run db:permissions` (nové tabuľkové práva; oznámenia a história iba `SELECT, INSERT`). Staré údaje sa neprepisujú, ani sa nevytvára predvolený právny text či domnelá evidencia. **Každá firma musí pred registráciou ďalších partnerov publikovať vlastné právne posúdené oznámenie.** Existujúce karty a nákupy zostávajú funkčné. DB zálohy obsahujú aj verzie a históriu informovania.
+
+Migrácia `20261015110000_company_logo` pridáva iba nullable stĺpce `logo_data` a `logo_version` do `companies`; pred spustením novej verzie aplikácie ju aplikujte štandardným `npm run db:deploy`. Logá sú súčasťou databázových záloh, nepotrebujú upload adresár ani nový verejný storage. Existujúce firmy bez loga používajú svoj názov. Pri obnove DB sa obnovia aj logá; pri rollbacku aplikácie stĺpce nemažte.
+
 | Premenná | Účet | Použitie |
 |---|---|---|
 | `DATABASE_URL` | `europodlahy_app` | bežiaca aplikácia a seed |

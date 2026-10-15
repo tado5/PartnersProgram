@@ -13,6 +13,7 @@ type PartnerItem = {
   displayName: string;
   phone: string | null;
   isActive: boolean;
+  privacyRecorded?: boolean;
 };
 
 type ApiError = { error?: { message?: string } };
@@ -36,6 +37,7 @@ export function PartnerList({
   const [query, setQuery] = useState("");
   const [type, setType] = useState("");
   const [active, setActive] = useState("all");
+  const [privacy, setPrivacy] = useState("all");
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
   const pageSize = 20;
@@ -53,6 +55,7 @@ export function PartnerList({
       setPending(true);
       setError("");
       const params = new URLSearchParams({ page: String(nextPage), active });
+      if (role === "admin") params.set("privacy", privacy);
       if (query.trim()) params.set("q", query.trim());
       if (type) params.set("type", type);
       const response = await companyFetch(`/api/partners?${params}`, { cache: "no-store" });
@@ -74,7 +77,7 @@ export function PartnerList({
       }
       setPending(false);
     },
-    [active, initialItems, query, type, companyFetch],
+    [active, initialItems, query, type, companyFetch, privacy, role],
   );
 
   function submitSearch(event: React.FormEvent<HTMLFormElement>) {
@@ -95,7 +98,7 @@ export function PartnerList({
         </div>
         {role === "admin" ? (
           <div className="flex flex-wrap items-center gap-3">
-            <CsvExportForm kind="partners" query={new URLSearchParams({ q: query.trim(), type, active }).toString()} />
+            <CsvExportForm kind="partners" query={new URLSearchParams({ q: query.trim(), type, active, privacy }).toString()} />
             <Link
               className="rounded-md bg-stone-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-stone-800"
               href="/app/partneri/novy"
@@ -107,7 +110,7 @@ export function PartnerList({
       </div>
 
       <form
-        className="mb-5 grid gap-3 rounded-xl border border-stone-200 bg-white p-4 sm:grid-cols-[minmax(14rem,1fr)_auto_auto_auto]"
+        className="mb-5 grid gap-3 rounded-xl border border-stone-200 bg-white p-4 sm:grid-cols-2 xl:grid-cols-[minmax(10rem,1fr)_auto_auto_auto_auto]"
         onSubmit={submitSearch}
       >
         <label className="sr-only" htmlFor="partner-search">Vyhľadať partnera</label>
@@ -141,6 +144,13 @@ export function PartnerList({
             <option value="false">Neaktívni</option>
           </select>
         ) : null}
+        {role === "admin" ? <select aria-label="Informovanie o spracúvaní údajov"
+          className="min-w-0 rounded-md border border-stone-300 bg-white px-3 py-2 text-sm"
+          value={privacy} onChange={(event) => setPrivacy(event.target.value)}>
+          <option value="all">Všetci – informovanie</option>
+          <option value="missing">Poskytnutie nezaevidované</option>
+          <option value="recorded">Poskytnutie zaevidované</option>
+        </select> : null}
         <button
           className="rounded-md border border-stone-300 px-4 py-2 text-sm font-medium hover:bg-stone-100 disabled:opacity-50"
           disabled={pending}
@@ -178,6 +188,9 @@ export function PartnerList({
                   <p className="mt-1 text-sm text-stone-600">
                     {partner.code}{partner.phone ? ` · ${partner.phone}` : ""}
                   </p>
+                  {role === "admin" ? <p className={`mt-1 text-xs ${partner.privacyRecorded ? "text-emerald-800" : "text-amber-900"}`}>
+                    {partner.privacyRecorded ? "Poskytnutie informácií zaevidované" : "Poskytnutie informácií nezaevidované"}
+                  </p> : null}
                 </div>
                 {role === "admin" ? (
                   <Link

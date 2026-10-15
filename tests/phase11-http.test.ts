@@ -13,8 +13,8 @@ import { generatePartnerCode } from "../src/server/partners";
 const base = "http://127.0.0.1:3017";
 const origin = "https://partners.example.invalid";
 const cookieName = "__Secure-authjs.session-token";
-type Method = "GET" | "POST" | "PATCH" | "DELETE";
-type Access = "tenant-admin" | "tenant-staff" | "superadmin" | "account" | "auth" | "public" | "cron";
+type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+type Access = "tenant-admin" | "tenant-staff" | "superadmin" | "account" | "auth" | "public" | "cron" | "logo" | "privacy";
 type Endpoint = { route: string; method: Method; access: Access; success?: number };
 
 // Each explicit handler export needs a role/guard case, including factory-created handlers.
@@ -22,6 +22,16 @@ const endpoints: Endpoint[] = [
   { route: "/api/auth/[...nextauth]", method: "GET", access: "auth" },
   { route: "/api/auth/[...nextauth]", method: "POST", access: "auth" },
   { route: "/api/audit-logs", method: "GET", access: "tenant-admin" },
+  // Multipart uploads, missing-logo reads and read-only superadmin access use the
+  // dedicated role/context matrix in logo-acceptance.test.ts (ACCEPTANCE_LOGO=1).
+  { route: "/api/company/logo", method: "GET", access: "logo" },
+  { route: "/api/company/logo", method: "PUT", access: "logo" },
+  { route: "/api/company/logo", method: "DELETE", access: "logo" },
+  // Publication concurrency, immutable evidence and the read-only superadmin
+  // matrix are exercised in privacy-acceptance.test.ts (ACCEPTANCE_PRIVACY=1).
+  { route: "/api/company/privacy", method: "GET", access: "privacy" },
+  { route: "/api/company/privacy", method: "PUT", access: "privacy" },
+  { route: "/api/company/privacy/publish", method: "POST", access: "privacy" },
   { route: "/api/company/settings", method: "GET", access: "tenant-admin" },
   { route: "/api/company/settings", method: "PATCH", access: "tenant-admin" },
   { route: "/api/cron/close-monthly-badges", method: "POST", access: "cron" },
@@ -35,6 +45,8 @@ const endpoints: Endpoint[] = [
   { route: "/api/partners/[id]", method: "PATCH", access: "tenant-admin" },
   { route: "/api/partners/[id]/activate", method: "POST", access: "tenant-admin" },
   { route: "/api/partners/[id]/deactivate", method: "POST", access: "tenant-admin" },
+  { route: "/api/partners/[id]/privacy", method: "GET", access: "privacy" },
+  { route: "/api/partners/[id]/privacy", method: "POST", access: "privacy" },
   { route: "/api/partners/[id]/purchases", method: "GET", access: "tenant-admin" },
   { route: "/api/partners/[id]/summary", method: "GET", access: "tenant-staff" },
   { route: "/api/partners/[id]/tokens", method: "GET", access: "tenant-admin" },
@@ -171,6 +183,12 @@ test("phase 11 complete endpoint role guards and tenant boundaries", async (t) =
       const admin = await user("admin");
       const seller = await user("seller");
       const targetUser = await user("seller", "target");
+      const notice = await prisma.companyPrivacyNotice.create({ data: {
+        companyId: company.id, version: 1, publishedByUserId: admin.id,
+        publishedAt: new Date(Date.now() - 60_000),
+        controllerName: company.name, controllerAddress: "Acceptance 1, Bratislava",
+        contactEmail: admin.email, body: "Privacy information for isolated HTTP fixtures. ".repeat(4),
+      } });
       const partner = await prisma.partner.create({ data: {
         companyId: company.id, code: generatePartnerCode(),
         displayName: `Phase11 partner ${suffix}`, type: "installer", createdByUserId: admin.id,
@@ -186,7 +204,7 @@ test("phase 11 complete endpoint role guards and tenant boundaries", async (t) =
         vatRatePercent: "23.00", points: 10, partnerPresent: true, source: "manual",
         createdByUserId: seller.id, idempotencyKey: randomUUID(),
       } });
-      return { company, admin, seller, targetUser, partner, token, value, purchase };
+      return { company, admin, seller, targetUser, notice, partner, token, value, purchase };
     }
     const first = await fixture("a");
     const second = await fixture("b");
@@ -215,7 +233,10 @@ test("phase 11 complete endpoint role guards and tenant boundaries", async (t) =
         vatRatePercent: "23.00", purchaseConfirmAboveEur: null,
         bronzeMonthlyTurnoverEur: null, silverMonthlyTurnoverEur: null, goldMonthlyTurnoverEur: null,
       };
-      if (entry.route === "/api/partners") return { type: "installer", displayName: `Phase11 new ${randomUUID()}` };
+      if (entry.route === "/api/partners") return {
+        type: "installer", displayName: `Phase11 new ${randomUUID()}`,
+        privacy: { noticeId: target.notice.id.toString(), providedAt: new Date().toISOString(), method: "in_person" },
+      };
       if (entry.route === "/api/partners/[id]") return { displayName: "Phase11 updated" };
       if (entry.route.endsWith("/tokens")) return { type: "qr", label: "Phase11 matrix" };
       if (entry.route === "/api/purchases") return {
@@ -262,7 +283,7 @@ test("phase 11 complete endpoint role guards and tenant boundaries", async (t) =
         actor === "superadmin" && context && tenant(entry) ? first.company.id : undefined);
     }
 
-    for (const entry of endpoints) {
+    for (const entry of endpoints.filter((entry) => !["logo", "privacy"].includes(entry.access))) {
       await t.test(`${entry.method} ${entry.route}: anonymous/seller/admin/superadmin`, async () => {
         for (const actor of Object.keys(actors) as Actor[]) {
           let status = entry.success ?? 200;

@@ -96,12 +96,12 @@ Mesačný odznak (Q15) sa počíta serverovo iba z netto súm nezmazaných náku
 | Oblasť | Akcie |
 |---|---|
 | Nákupy | `purchase.create`, `purchase.update`*, `purchase.delete`* |
-| Partneri | `partner.create`, `partner.update`, `partner.deactivate`*, `partner.activate` |
+| Partneri | `partner.create`, `partner.update`, `partner.deactivate`*, `partner.activate`, `partner.privacy_provided` |
 | Tokeny | `token.create`, `token.deactivate`* |
 | Používatelia | `user.create`, `user.update`, `user.password_reset` |
 | Prihlásenie | `auth.login`, `auth.login_failed`, `user.password_change` |
 | Exporty | `export.csv` (typ a filtre); `export.report_pdf` (obdobie `month`/`from`/`to`, typ partnera) |
-| Firmy | `company.create`, `company.update`, `company.deactivate`*, `company.activate` |
+| Firmy | `company.create`, `company.update`, `company.deactivate`*, `company.activate`, `company.logo_update`, `company.logo_delete`, `company.privacy_draft_update`, `company.privacy_publish` |
 | Superadmin | `company.context_select` (vstup do firemného programu) |
 
 \* povinný `reason`. Pri úpravách sa ukladajú `old_values` aj `new_values`.
@@ -125,10 +125,22 @@ Firemné udalosti majú `company_id` danej firmy aj pri zásahu superadmina; `us
 - CSV injection: hodnoty začínajúce `= + - @`, TAB alebo CR dostanú na začiatok apostrof.
 - Tajomstvá sú iba v `.env` (gitignored), do repozitára ide iba `.env.example`.
 
-## 7. GDPR (minimum)
-- Minimum údajov na verejnej karte.
-- Informovanie partnera o spracovaní údajov rieši proces mimo aplikácie (pozri [open-questions](open-questions.md)).
-- Pri žiadosti o výmaz sa osobné údaje partnera anonymizujú a tokeny deaktivujú; nákupy zostanú pre štatistiku.
+## 7. Informovanie o spracúvaní osobných údajov
+- Každá firma spravuje vlastný návrh informačného oznámenia; publikovať ho môže iba jej admin. Superadmin má náhľad, predavač nemá prístup k nastaveniam ani evidencii informovania.
+- Návrh možno uložiť neúplný. Publikovanie vyžaduje identifikáciu a sídlo prevádzkovateľa, platný kontaktný e-mail a text oznámenia (100–20 000 znakov); prípadné IČO má osem číslic. Kontrola polí nie je právnym posúdením obsahu. Predvyplnené znenie a retenčné pravidlá musí firma overiť podľa skutočného spracúvania.
+- Publikovaná verzia je nemenná, účinná od publikovania. Publikovanie vyžaduje token skontrolovaného návrhu `expectedUpdatedAt`; súbežné/stará verzia návrhu vráti konflikt. História oznámení a poskytnutí je chránená DB triggermi a právami iba `SELECT, INSERT`.
+- Registrácia nového partnera vyžaduje aktuálne publikované oznámenie a výslovný záznam skutočného poskytnutia jeho verzie: dátum/čas, spôsob (`in_person`, `printed`, `email`) a zaznamenávajúci používateľ. Poskytnutie nesmie predchádzať publikovaniu verzie ani byť v budúcnosti. Registrácia a evidencia sa uložia atomicky. Pri zmene verzie počas registrácie sa formulár musí obnoviť.
+- Evidencia nie je súhlas so spracúvaním ani dôkaz prečítania. Oznámenie treba poskytnúť pred získaním údajov alebo pri ich získavaní; odkaz na karte je doplnkový. Výber spôsobu e-mail nič neodosiela. Existujúci partneri nemajú automaticky doplnený dátum ani domnelé potvrdenie.
+- Pri existujúcom partnerovi môže vlastný admin pridať záznam aj k staršej publikovanej verzii. Ďalší záznam vyžaduje dôvod (2–255 znakov); pôvodná história zostáva zachovaná. Nová verzia automaticky neruší predchádzajúce záznamy a systém nerozhoduje o potrebe opätovného informovania.
+- Verejná stránka `/ochrana-udajov/{slug}?version=N` nevyžaduje token ani prihlásenie, zobrazuje iba publikovaný text aktívnej firmy a určené firemné kontakty. Text sa escapuje, nepodporuje HTML. Návrhy, údaje partnerov ani aktéri publikovania sa nezverejňujú.
+- Verejná karta upozorňuje, že ktokoľvek s platným odkazom vidí zobrazené údaje. Spracúvané údaje sa tým nestávajú anonymnými.
+- Audit ukladá metadáta publikácie a poskytnutia, nie celé oznámenia ani kontakty prevádzkovateľa. Dôvody záznamov nemajú obsahovať zbytočné osobné údaje.
+
+**Mimo implementovaného rozsahu:** právne schválenie textov a základov, zmluvy so sprostredkovateľmi, lehoty uchovávania, vybavovanie žiadostí a skutočný výmaz/anonymizácia vrátane väzieb, auditu a záloh. Deaktivácia ani soft delete nie sú výmaz. Nemennosť histórie sama osebe neoprávňuje uchovávať údaje navždy; retenčný a výmazový proces treba samostatne právne aj technicky vyriešiť. Táto funkcionalita pokrýva podporu informovania, nie kompletný súlad s GDPR.
+
+**Hlavný GDPR dokument:** `/gdpr` a jeho PDF pokrývajú údaje a procesy aplikácie. Nový firemný návrh je automaticky predvyplnený bez zástupných značiek. Názov a IČO sa preberajú z profilu; sídlo a e-mail sa vyžadujú pred publikovaním. Lehoty sú navrhnutou retenčnou politikou, nie zákonným univerzálnym pravidlom: správa programu + 3 roky, audit a tokeny 12 mesiacov, exporty 30 dní, zálohy 90 dní. Firma môže pravidlá upraviť v nastaveniach a musí zabezpečiť ich dodržiavanie mimo tohto formulára. Automatické mazanie sa týmto rozšírením neimplementuje a DB nemennosť histórie zostáva samostatným obmedzením pre retenčný proces. Nemožno tvrdiť, že politika už zodpovedá prevádzke alebo zaručuje GDPR súlad. Podmienky prenosov mimo EHP nepredstavujú potvrdenie umiestnenia hostingu; konkrétne prenosy musí firma overiť a opísať. PDF firemnej verzie vychádza z nemenného snapshotu.
+
+Podklady: [EDPB – informovanie a práva osôb](https://www.edpb.europa.eu/sme/be-compliant/respect-individuals-rights_en), [zásady spracúvania](https://www.edpb.europa.eu/sme/learn-the-basics/data-protection-basics_en), [prevádzkovateľ a sprostredkovateľ](https://www.edpb.europa.eu/sme/learn-the-basics/data-controller-or-data-processor_en).
 
 ## 8. Bezpečnostné testy (povinné pred nasadením)
 Lokálna automatizovaná akceptácia: `npm run test:phase11` (aktuálny produkčný build, izolovaná MariaDB a lokálny Chrome). Inventár route/metód je v `tests/phase11-http.test.ts`; pri pridaní explicitnej API metódy vyžaduje scenár. Rolové kontroly nepovažujeme za úplné funkčné pokrytie všetkých kombinácií payloadov. Auth.js je pokrytý session/signout kontrolami a osobitnými login/session scenármi; cron kontrolou bearer oprávnenia a existujúcimi integračnými scenármi uzatvárania mesiaca.

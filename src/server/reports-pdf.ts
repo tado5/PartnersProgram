@@ -38,6 +38,7 @@ export function reportFileName(companySlug: string, period: PeriodValue) {
 
 export async function renderReportPdf(input: {
   companyName: string;
+  companyLogo?: Uint8Array | null;
   period: PeriodValue;
   type?: PartnerType;
   report: Report;
@@ -68,7 +69,12 @@ export async function renderReportPdf(input: {
   const bottom = () => doc.page.height - doc.page.margins.bottom - 20;
 
   // Header
-  doc.font("bold").fontSize(9).fillColor("#92400e").text("EUROPODLAHY · PARTNERSKÝ PROGRAM", left, 40, { characterSpacing: 1 });
+  if (input.companyLogo) {
+    doc.image(Buffer.from(input.companyLogo), left, 40, { fit: [160, 48] });
+    doc.y = 96;
+  } else {
+    doc.font("bold").fontSize(9).fillColor("#92400e").text(input.companyName, left, 40);
+  }
   doc.font("bold").fontSize(20).fillColor("#0c0a09")
     .text(period.month ? "Mesačný report" : "Report za obdobie", left, doc.y + 4);
   doc.font("regular").fontSize(10).fillColor("#57534e");

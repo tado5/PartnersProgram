@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { useEffect, useState, type ReactNode } from "react";
@@ -44,10 +45,12 @@ function isActive(pathname: string, item: ShellNavItem) {
 }
 
 export function AppShell({
-  brandHref, brandSuffix, items, userName, userRole, footerExtra, banner, children,
+  brandHref, brandSuffix, companyName, logoUrl, items, userName, userRole, footerExtra, banner, children,
 }: {
   brandHref: string;
   brandSuffix?: string;
+  companyName?: string;
+  logoUrl?: string | null;
   items: ShellNavItem[];
   userName: string;
   userRole: string;
@@ -86,7 +89,11 @@ export function AppShell({
     });
   }
 
-  const brand = (
+  const brand = companyName ? (
+    logoUrl ? <Image unoptimized src={logoUrl} alt={`Logo ${companyName}`} width={176} height={40}
+      className="h-10 w-full max-w-44 object-contain object-left" />
+      : <span className="block max-w-44 truncate font-bold tracking-tight text-stone-950" title={companyName}>{companyName}</span>
+  ) : (
     <span className="font-bold tracking-tight text-stone-950">
       europodlahy<span className="text-amber-700">.</span>
       {brandSuffix ? <span className="ml-1 text-xs font-medium text-stone-500">{brandSuffix}</span> : null}

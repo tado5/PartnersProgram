@@ -62,6 +62,8 @@ try {
   sql(readFileSync("prisma/migrations/20261013130000_purchase_vat/migration.sql", "utf8"));
   sql(readFileSync("prisma/migrations/20261014090000_purchase_vat_drop_default/migration.sql", "utf8"));
   sql(readFileSync("prisma/migrations/20261014100000_audit_company_created_index/migration.sql", "utf8"));
+  sql(readFileSync("prisma/migrations/20261015110000_company_logo/migration.sql", "utf8"));
+  sql(readFileSync("prisma/migrations/20261015120000_privacy_notices/migration.sql", "utf8"));
   assert.equal(sql("SELECT amount,net_amount,vat_rate_percent,points FROM purchases WHERE id=5;").trim(), "19.99\t16.25\t23.00\t16");
   assert.equal(sql("SELECT COLUMN_DEFAULT IS NULL FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='purchases' AND COLUMN_NAME='vat_rate_percent';").trim(), "1");
   assert.equal(sql("SELECT COUNT(DISTINCT INDEX_NAME) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='audit_logs' AND INDEX_NAME='audit_logs_company_created_idx';").trim(), "1");
@@ -75,7 +77,10 @@ try {
     GRANT SELECT, INSERT, UPDATE ON ${database}.partner_tokens TO 'europodlahy_app'@'%';
     GRANT SELECT, INSERT, UPDATE ON ${database}.purchases TO 'europodlahy_app'@'%';
     GRANT SELECT, INSERT ON ${database}.partner_badge_awards TO 'europodlahy_app'@'%';
-    GRANT SELECT, INSERT ON ${database}.audit_logs TO 'europodlahy_app'@'%';`);
+    GRANT SELECT, INSERT ON ${database}.audit_logs TO 'europodlahy_app'@'%';
+    GRANT SELECT, INSERT, UPDATE ON ${database}.company_privacy_drafts TO 'europodlahy_app'@'%';
+    GRANT SELECT, INSERT ON ${database}.company_privacy_notices TO 'europodlahy_app'@'%';
+    GRANT SELECT, INSERT ON ${database}.company_privacy_receipts TO 'europodlahy_app'@'%';`);
   assert.equal(sql(`SELECT GROUP_CONCAT(PRIVILEGE_TYPE ORDER BY PRIVILEGE_TYPE)
     FROM information_schema.TABLE_PRIVILEGES
     WHERE TABLE_SCHEMA='${database}' AND TABLE_NAME='audit_logs'
@@ -110,6 +115,20 @@ try {
   });
   const result = await new Promise((resolve) => child.once("exit", resolve));
   assert.equal(result, 0, "Phase 5A regression tests failed.");
+  if (process.env.ACCEPTANCE_PRIVACY === "1") {
+    const privacy = spawn("node", ["--import", "tsx", "--test", "tests/privacy-acceptance.test.ts"], {
+      env: { ...env, DATABASE_URL: env.TEST_DATABASE_URL }, stdio: "inherit",
+    });
+    const privacyResult = await new Promise((resolve) => privacy.once("exit", resolve));
+    assert.equal(privacyResult, 0, "Privacy notice and receipt acceptance tests failed.");
+  }
+  if (process.env.ACCEPTANCE_LOGO === "1") {
+    const logo = spawn("node", ["--import", "tsx", "--test", "tests/logo-acceptance.test.ts"], {
+      env: { ...env, DATABASE_URL: env.TEST_DATABASE_URL }, stdio: "inherit",
+    });
+    const logoResult = await new Promise((resolve) => logo.once("exit", resolve));
+    assert.equal(logoResult, 0, "Company logo acceptance tests failed.");
+  }
   if (process.env.ACCEPTANCE_PHASE11 === "1") {
     const phase11 = spawn("node", ["--import", "tsx", "--test", "tests/phase11-http.test.ts"], {
       env: { ...env, DATABASE_URL: env.TEST_DATABASE_URL }, stdio: "inherit",
@@ -169,7 +188,8 @@ try {
       WHERE TABLE_SCHEMA='${database}' AND GRANTEE=CONCAT(QUOTE('europodlahy_app'),'@',QUOTE('%'));`, false)
       .trim().split("\n").filter(Boolean);
     for (const table of tables) {
-      assert.ok(["companies", "users", "partners", "partner_tokens", "purchases", "partner_badge_awards", "audit_logs"].includes(table));
+      assert.ok(["companies", "users", "partners", "partner_tokens", "purchases", "partner_badge_awards", "audit_logs",
+        "company_privacy_drafts", "company_privacy_notices", "company_privacy_receipts"].includes(table));
       sql(`REVOKE ALL PRIVILEGES ON ${database}.${table} FROM 'europodlahy_app'@'%';`, false);
     }
     sql(`REVOKE ALL PRIVILEGES ON ${database}.* FROM 'europodlahy_migrate'@'%'; DROP DATABASE ${database};`, false);

@@ -15,7 +15,7 @@ export function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  if (pathname.startsWith("/k/") || pathname.startsWith("/api/public/card/")) {
+  if (pathname.startsWith("/k/") || pathname.startsWith("/api/public/card/") || pathname.startsWith("/ochrana-udajov/") || pathname === "/gdpr") {
     if (request.method !== "GET") {
       return new NextResponse(null, {
         status: 405,
@@ -61,7 +61,7 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/app/:path*", "/superadmin/:path*", "/change-password", "/api/:path*", "/k/:path*"],
+  matcher: ["/app/:path*", "/superadmin/:path*", "/change-password", "/api/:path*", "/k/:path*", "/ochrana-udajov/:path*", "/gdpr"],
 };
 
 function publicHeaders(extra?: Record<string, string>) {

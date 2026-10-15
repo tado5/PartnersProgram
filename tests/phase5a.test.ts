@@ -311,7 +311,12 @@ test("phase 5A database and HTTP isolation", async (t) => {
     await t.test("strict payloads prohibit global roles and company reassignment", async () => {
       assert.equal(userCreateSchema.safeParse({ email: "x@example.test", name: "Test", temporaryPassword: password, role: "superadmin" }).success, false);
       assert.equal(userUpdateSchema.safeParse({ companyId: second.id.toString(), isActive: true }).success, false);
-      assert.equal(partnerCreateSchema.safeParse({ type: "installer", displayName: "Test", companyId: second.id.toString() }).success, false);
+      const partnerInput = {
+        type: "installer", displayName: "Test",
+        privacy: { noticeId: "1", providedAt: new Date().toISOString(), method: "in_person" },
+      };
+      assert.equal(partnerCreateSchema.safeParse(partnerInput).success, true);
+      assert.equal(partnerCreateSchema.safeParse({ ...partnerInput, companyId: second.id.toString() }).success, false);
       assert.equal((await legacy.request("/api/users/2", json("PATCH", { role: "superadmin" }))).status, 400);
       assert.equal((await legacy.request("/api/users/2", json("PATCH", { companyId: second.id.toString() }))).status, 400);
       assert.equal((await legacy.request("/api/partners", {}, second.id.toString())).status, 403);
@@ -710,7 +715,16 @@ test("phase 5A database and HTTP isolation", async (t) => {
       assert.equal(readCompanySelection(`${signedValue}x`), null);
       assert.equal((await sa.request("/api/partners")).status, 400, "API must not fall back to page cookie");
       assert.equal((await sa.request("/app/partneri")).status, 200);
-      const created = await sa.request("/api/partners", json("POST", { type: "installer", displayName: "SA created partner" }), second.id.toString());
+      const notice = await prisma.companyPrivacyNotice.create({ data: {
+        companyId: second.id, version: 1, publishedByUserId: secondAdmin.id,
+        publishedAt: new Date(Date.now() - 60_000),
+        controllerName: second.name, controllerAddress: "Acceptance 1, Bratislava",
+        contactEmail: secondAdmin.email, body: "Privacy information for isolated company fixtures. ".repeat(4),
+      } });
+      const created = await sa.request("/api/partners", json("POST", {
+        type: "installer", displayName: "SA created partner",
+        privacy: { noticeId: notice.id.toString(), providedAt: new Date().toISOString(), method: "in_person" },
+      }), second.id.toString());
       assert.equal(created.status, 201);
       const createdId = (await created.json()).partner.id;
       const audit = await prisma.auditLog.findFirstOrThrow({ where: { entityId: BigInt(createdId), action: "partner.create" } });

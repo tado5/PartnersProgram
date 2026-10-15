@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { env } from "@/lib/env";
 import { getPublicCard } from "@/server/public-card";
+import { escapeHtml } from "@/lib/html";
 
 type RouteContext = { params: Promise<{ token: string }> };
 
@@ -40,6 +41,7 @@ const styles = `
   main { max-width: 48rem; margin: 0 auto; display: grid; gap: 1.25rem; }
   header { border-radius: 1rem; background: #1c1917; color: white; padding: 1.75rem; box-shadow: 0 1px 3px #0002; }
   .brand { color: #fcd34d; font-size: .8rem; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; }
+  .company-logo { display: block; max-width: 100%; width: 176px; height: 64px; object-fit: contain; object-position: left; margin-bottom: .75rem; background: white; border-radius: .5rem; padding: .5rem; }
   h1 { margin: .75rem 0 0; font-size: clamp(1.8rem, 6vw, 2.4rem); }
   h2 { margin: 0; font-size: 1.2rem; }
   p { line-height: 1.5; }
@@ -93,6 +95,7 @@ function publicCardHtml(card: NonNullable<Awaited<ReturnType<typeof getPublicCar
   <body>
     <main>
       <header>
+        ${card.companyLogoUrl ? `<img class="company-logo" src="${escapeHtml(card.companyLogoUrl)}" alt="Logo ${escapeHtml(card.companyName)}">` : ""}
         <div class="brand">${escapeHtml(card.companyName)}</div>
         <h1>${escapeHtml(card.displayName)}</h1>
         <p class="muted">Partnerská karta · ${escapeHtml(card.code)}</p>
@@ -120,6 +123,10 @@ function publicCardHtml(card: NonNullable<Awaited<ReturnType<typeof getPublicCar
         <h2>Nákupy</h2>
         ${purchases}
         ${pagination}
+      </section>
+      <section class="panel">
+        <p class="intro">Odkaz na kartu uchovávajte v súkromí. Osoba s odkazom môže vidieť údaje zobrazené na karte.</p>
+        ${card.privacyUrl ? `<p><a href="${escapeHtml(card.privacyUrl)}">Ochrana osobných údajov</a></p>` : ""}
       </section>
       <footer>Partnerský program · ${escapeHtml(new URL(env.APP_BASE_URL).host)}</footer>
     </main>
@@ -157,14 +164,4 @@ function monthLabel(period: string) {
   return escapeHtml(new Intl.DateTimeFormat("sk-SK", {
     month: "long", year: "numeric", timeZone: "UTC",
   }).format(new Date(`${period}-01T00:00:00.000Z`)));
-}
-
-function escapeHtml(value: string) {
-  return value.replace(/[&<>"']/g, (character) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    "\"": "&quot;",
-    "'": "&#39;",
-  })[character]!);
 }

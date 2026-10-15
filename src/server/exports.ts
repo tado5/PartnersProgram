@@ -84,16 +84,18 @@ async function exportPartners(context: CompanyContext, params: URLSearchParams) 
   const query = params.get("q")?.trim() ?? "";
   const type = parseType(params.get("type"));
   const active = params.get("active") ?? "all";
-  if (type === INVALID || !["all", "true", "false"].includes(active)) {
+  const privacy = params.get("privacy") ?? "all";
+  if (type === INVALID || !["all", "true", "false"].includes(active) || !["all", "missing", "recorded"].includes(privacy)) {
     throw validationError("Neplatné filtre exportu partnerov.");
   }
-  const filters = { q: query ? "Skryté" : null, type: type ?? null, active };
+  const filters = { q: query ? "Skryté" : null, type: type ?? null, active, privacy };
   return prisma.$transaction(async (tx) => {
     await lockCompanyContext(tx, context);
     const where: Prisma.PartnerWhereInput = {
       companyId: context.companyId,
       ...(type ? { type } : {}),
       ...(active === "all" ? {} : { isActive: active === "true" }),
+      ...(privacy === "all" ? {} : { privacyReceipts: privacy === "missing" ? { none: {} } : { some: {} } }),
     };
     if (query) {
       const normalized = normalizePartnerSearch(query);

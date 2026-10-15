@@ -11,7 +11,7 @@
 | 5 | Q2, Q3 | otvorené |
 | 6 | Q6, Q7 | rozhodnuté a implementované (2026-10-13); mobilná a DB akceptácia zostáva |
 | 7 | Q13, Q14 | otvorené |
-| 12 a tlač kariet | Q8, Q9, Q10, Q11 | otvorené |
+| 12 a tlač kariet | Q8, Q9, Q10; právne doplnenie Q11 | otvorené |
 
 ---
 
@@ -73,13 +73,16 @@ Bez „Zapamätať si ma“; tlačidlo Odhlásiť je stále viditeľné; deaktiv
 | Q8 | Kde bude produkcia | VPS s Dockerom | fáza 12 |
 | Q9 | Kam ukladať zálohy mimo servera | šifrovaný objektový storage alebo NAS | fáza 12 |
 | Q10 | Kto bude technický správca | – | fáza 12 |
-| Q11 | Informovanie partnera o spracovaní údajov (GDPR) | informácia pri odovzdaní karty, mimo aplikácie | spustenie |
+| Q11 – právne doplnenie | Obsah oznámení, právne základy, lehoty, sprostredkovateľské zmluvy a vybavovanie práv | Schváli každá firma podľa svojho spracúvania; technická podpora informovania je rozhodnutá nižšie. | spustenie so skutočnými údajmi |
 | Q13 | Koľko histórie zobraziť na verejnej karte | všetky nákupy, stránkovanie po 20 | fáza 7 |
 | Q14 | Kontakt firmy/predajne na verejnej karte | Ak sa schváli, musí byť vlastný pre danú firmu; spoločný statický kontakt Europodlahy nie je vhodný pre viac firiem. Kontaktné polia a DTO sa doplnia až po potvrdení. | fáza 7 |
 
 ---
 
 ## Rozhodnuté
+
+**Q11 – technická podpora informovania (2026-10-15):** firemné oznámenia s nemennými publikovanými verziami, evidencia skutočného poskytnutia a verejný odkaz bez partnerovho tokenu. Používateľ výslovne schválil blokovanie registrácie nových partnerov bez publikovaného oznámenia; existujúce karty a nákupy zostávajú funkčné. Nejde o povinný súhlas s GDPR, marketingový súhlas ani automatické potvrdenie prečítania. Oznámenie sa poskytuje pred získaním údajov alebo pri ich získavaní, nie iba pri neskoršom odovzdaní karty.
+
 | # | Rozhodnutie | Dátum |
 |---|---|---|
 | D1 | Frontend je React v rámci Next.js (App Router, TypeScript), jedna aplikácia | 2026-10-07 |

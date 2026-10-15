@@ -5,6 +5,7 @@ import { SessionActivity } from "@/components/auth/session-activity";
 import { AppShell, type ShellNavItem } from "@/components/app-shell";
 import { requireCompanyPage } from "@/server/auth/session";
 import { CompanyProvider, DocumentLink } from "@/components/company-context";
+import { companyLogoDataUrl } from "@/lib/company-logo";
 
 export const instant = false;
 
@@ -51,6 +52,8 @@ export default async function AppLayout({
     <SessionActivity />
     <AppShell
       brandHref="/app"
+      companyName={context.company.name}
+      logoUrl={companyLogoDataUrl(context.company.logoData)}
       items={items}
       userName={context.user.name}
       userRole={roleLabels[context.user.role]}

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { privacyReceiptSchema } from "./privacy";
 
 const optionalText = (max: number) =>
   z.preprocess(
@@ -50,7 +51,7 @@ export const passwordResetSchema = z.strictObject({
   temporaryPassword: z.string().min(10).max(128),
 });
 
-export const partnerCreateSchema = z.strictObject({
+const partnerFieldsSchema = z.strictObject({
   type: z.enum(["installer", "company", "referrer"]),
   displayName: z.string().trim().min(2).max(100),
   phone: slovakPhoneSchema,
@@ -69,13 +70,15 @@ export const partnerCreateSchema = z.strictObject({
   confirmDuplicates: z.boolean().optional(),
 });
 
-export const partnerUpdateSchema = partnerCreateSchema
+export const partnerCreateSchema = partnerFieldsSchema.extend({ privacy: privacyReceiptSchema });
+
+export const partnerUpdateSchema = partnerFieldsSchema
   .partial()
   .extend({
     phone: z.union([slovakPhoneSchema, z.null()]).optional(),
-    email: z.union([partnerCreateSchema.shape.email, z.null()]).optional(),
+    email: z.union([partnerFieldsSchema.shape.email, z.null()]).optional(),
     contactPerson: z.union([optionalText(100), z.null()]).optional(),
-    ico: z.union([partnerCreateSchema.shape.ico, z.null()]).optional(),
+    ico: z.union([partnerFieldsSchema.shape.ico, z.null()]).optional(),
     internalNote: z.union([optionalText(1000), z.null()]).optional(),
   })
   .refine((values) =>

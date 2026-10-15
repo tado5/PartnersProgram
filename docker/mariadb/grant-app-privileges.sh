@@ -12,4 +12,7 @@ GRANT SELECT, INSERT, UPDATE ON europodlahy.partner_tokens TO 'europodlahy_app'@
 GRANT SELECT, INSERT, UPDATE ON europodlahy.purchases TO 'europodlahy_app'@'%';
 GRANT SELECT, INSERT ON europodlahy.partner_badge_awards TO 'europodlahy_app'@'%';
 GRANT SELECT, INSERT ON europodlahy.audit_logs TO 'europodlahy_app'@'%';
+GRANT SELECT, INSERT, UPDATE ON europodlahy.company_privacy_drafts TO 'europodlahy_app'@'%';
+GRANT SELECT, INSERT ON europodlahy.company_privacy_notices TO 'europodlahy_app'@'%';
+GRANT SELECT, INSERT ON europodlahy.company_privacy_receipts TO 'europodlahy_app'@'%';
 SQL

@@ -1,11 +1,16 @@
 import { redirect } from "next/navigation";
 
 import { PurchaseConfirmationSettings } from "@/components/companies/purchase-confirmation-settings";
+import { CompanyLogoSettings } from "@/components/companies/company-logo-settings";
+import { companyLogoDataUrl } from "@/lib/company-logo";
+import { PrivacySettings } from "@/components/companies/privacy-settings";
+import { getCompanyPrivacy } from "@/server/privacy";
 import { requireCompanyPage } from "@/server/auth/session";
 
 export default async function CompanySettingsPage() {
   const context = await requireCompanyPage(["admin"]);
   if (context.user.role === "seller") redirect("/app");
+  const privacy = await getCompanyPrivacy(context.companyId);
 
   return (
     <section>
@@ -20,6 +25,10 @@ export default async function CompanySettingsPage() {
         </p>
       ) : null}
       <div className="mt-6">
+        <PrivacySettings initial={privacy} companySlug={context.company.slug}
+          companyName={context.company.name} companyIco={context.company.ico} readOnly={context.user.role !== "admin"} />
+        <CompanyLogoSettings companyName={context.company.name}
+          logoUrl={companyLogoDataUrl(context.company.logoData)} readOnly={context.user.role !== "admin"} />
         <PurchaseConfirmationSettings
           readOnly={context.user.role !== "admin"}
           initialVatRate={context.company.vatRatePercent.toFixed(2)}

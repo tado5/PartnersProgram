@@ -53,6 +53,30 @@ Zmena vlastného hesla: `{ currentPassword, newPassword }`; nové heslo má mini
 Firemné `/api/users` povoľuje iba roly `admin` a `seller` a iba účty aktuálnej firmy, vrátane resetu hesla. Členstvo firmy je nemenné; globálne účty superadminov sa v tomto zozname ani v editáciách nezobrazujú.
 
 ## 2. Partneri
+
+Registrácia `POST /api/partners` vyžaduje aj `privacy: { noticeId, providedAt, method, reason? }`.
+`noticeId` je reťazec ID aktuálnej publikovanej verzie danej firmy, `providedAt` ISO dátum v UTC a `method` jedno z `in_person`, `printed`, `email`. Bez publikovaného oznámenia sa ešte pred validáciou registračného payloadu vráti `409 PRIVACY_NOTICE_REQUIRED`; chýbajúca evidencia pri publikovanom oznámení je 400. Cudzie/neexistujúce oznámenie = `404 PRIVACY_NOTICE_NOT_FOUND`, stará verzia pri registrácii = `409 PRIVACY_NOTICE_CHANGED`, budúci čas alebo čas pred publikovaním = `400 INVALID_PRIVACY_DATE`. Partner a evidencia sa vytvoria v jednej transakcii. Existujúce karty, úpravy partnerov a nákupy nie sú týmto publikačným blokovaním dotknuté.
+
+`GET /api/partners` a `/api/exports/partners.csv` podporujú `privacy=all|missing|recorded`; filter sa týka existencie evidencie, nie súhlasu alebo právnej správnosti. Admin zoznam dostane `privacyRecorded`; predavač toto pole nedostane a nemôže použiť filter iný než `all`.
+
+### Informačné oznámenia a evidencia poskytnutia
+
+| Metóda | Endpoint | Rola | Účel |
+|---|---|---|---|
+| GET | `/api/company/privacy` | A, SA vo vybranej firme | `{ draft, current }`, vrátane tokenu `draft.updatedAt`; `no-store` |
+| PUT | `/api/company/privacy` | iba vlastný A | uloženie aj neúplného návrhu; `{ controllerName, controllerAddress, controllerIco?, contactEmail, dpoContact?, body }`; odpoveď `{ draft, current }` |
+| POST | `/api/company/privacy/publish` | iba vlastný A | `{ expectedUpdatedAt }` povinný ISO token uloženého návrhu; odpoveď `{ notice }`; nová nemenná verzia, účinná okamžite |
+| GET | `/api/partners/{id}/privacy` | A, SA vo vybranej firme | `{ items }` – história poskytnutí, verzia, čas, spôsob, zaznamenal a dôvod |
+| POST | `/api/partners/{id}/privacy` | iba vlastný A | `{ noticeId, providedAt, method, reason? }`; 201 `{ id }`; pridanie záznamu aj k historickej verzii, bez prepisu minulosti |
+| GET | `/ochrana-udajov/{slug}?version=N` | verejné | publikovaná verzia aktívnej firmy; bez `version` najnovšia; 404 pri chýbajúcej/neplatnej verzii, neaktívnej alebo chýbajúcej firme |
+
+`GET /gdpr` poskytuje hlavný dokument ochrany údajov. `?format=pdf` vráti prílohu `gdpr.pdf` s vloženým Unicode písmom a stránkovaním. Spoločný dokument neobsahuje fiktívnu identitu firmy a odkazuje na príslušnú firemnú publikovanú verziu dostupnú z partnerskej karty. `?format=pdf` na `/ochrana-udajov/{slug}?version=N` poskytuje nemennú firemnú verziu s identifikáciou a kontaktmi. Odkaz na PDF z firemnej HTML stránky je vždy pripnutý k zobrazenej verzii a uplatňuje rovnaké kontroly aktívnej firmy. Verejné stránky nevyžadujú prihlásenie či partnerov token a neposkytujú návrhy firmy.
+
+Publikovanie naďalej odmietne starší text obsahujúci nevyriešené značky `[DOPLNIŤ: …]`; uloženie návrhu ich povoľuje. Nový predvyplnený dokument ich neobsahuje. Validácia nie je právnym schválením ani potvrdením dodržiavania retenčnej politiky.
+
+Publikácia vyžaduje vyplnené meno/sídlo prevádzkovateľa, platný kontaktný e-mail, voliteľné osemmiestne IČO a text 100–20 000 znakov. Chýbajúci návrh = `409 PRIVACY_DRAFT_MISSING`, zmenený alebo už použitý token = `409 PRIVACY_DRAFT_CHANGED`; neúplný text = 400 s poľami. Validácia nie je právna kontrola.
+
+Ďalší záznam poskytnutia vyžaduje dôvod 2–255 znakov (`400 PRIVACY_REASON_REQUIRED` pri chýbaní). Aktér a firma sa určia zo session, nie z payloadu. SA nemôže meniť oznámenia ani dopĺňať históriu; pri registrácii partnera má naďalej existujúce admin oprávnenia vo výslovne vybranej firme a prvá evidencia sa uloží pod jeho identitou. Zápisy vyžadujú rovnaký pôvod. Audit: `company.privacy_draft_update`, `company.privacy_publish`, `partner.privacy_provided`. Verejný text je escapovaný, bez údajov partnera, s `no-store`, `noindex` a `no-referrer`; verejné zápisy sú 405.
 | Metóda | Endpoint | Rola | Účel |
 |---|---|---|---|
 | GET | `/api/partners?q=&type=&active=&page=` | A, P* | zoznam a vyhľadávanie; `q` hľadá v kóde (normalizovanom), mene (bez diakritiky, časť textu), telefóne (iba číslice, časť čísla) a IČO (*P: iba id, kód, meno, typ a čiastočne maskovaný telefón aktívnych partnerov; neaktívnych nemôže vyhľadať) |
@@ -84,6 +108,16 @@ Odpoveď pri vytvorení tokenu má `Cache-Control: no-store`; `value` a URL sa v
 | GET | `/api/purchases/{id}` | A | detail |
 | PATCH | `/api/purchases/{id}` | A | `{ amount?, partnerPresent?, note?, purchasedAt?, partnerId?, reason }` – `amount` je suma s DPH; `reason` je **povinný**; netto suma a body sa prepočítajú s historickou sadzbou nákupu |
 | DELETE | `/api/purchases/{id}` | A | `{ reason }` – **povinný**; vykoná **soft delete** |
+
+### Logo firmy
+
+| Metóda | Endpoint | Rola | Účel |
+|---|---|---|---|
+| GET | `/api/company/logo` | A, P, SA vo vybranej firme | PNG aktuálnej firmy; `no-store`, `nosniff`; 404 bez loga |
+| PUT | `/api/company/logo` | iba vlastný A | `multipart/form-data`, pole `file`; PNG/JPEG/WebP do 2 MiB, najviac 16 miliónov pixelov; normalizácia na PNG do 512 × 256 px, bez metadát; 400 neplatný obrázok, 413 veľký súbor |
+| DELETE | `/api/company/logo` | iba vlastný A | odstránenie loga; návrat k názvu firmy |
+
+Zápisy vyžadujú rovnaký pôvod; SA nemôže meniť logo. Audit `company.logo_update` / `company.logo_delete` uchováva iba hash verzie, nikdy binárny obrázok. Verejná karta odvodí logo z firmy platného tokenu a vloží normalizované PNG; neexistuje verejný endpoint vyhľadávania log podľa ID firmy.
 
 ## 5. Reporty
 | Metóda | Endpoint | Rola | Účel |

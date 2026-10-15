@@ -43,11 +43,19 @@ enum MonetaryBasis {
   net
 }
 
+enum PrivacyDeliveryMethod {
+  in_person
+  printed
+  email
+}
+
 model Company {
   id              BigInt         @id @default(autoincrement()) @db.UnsignedBigInt
   name            String         @db.VarChar(100)
   slug            String         @unique(map: "companies_slug_uq") @db.VarChar(80)
   ico             String?        @db.Char(8)
+  logoData        Bytes?         @map("logo_data") @db.MediumBlob
+  logoVersion     String?        @map("logo_version") @db.Char(64)
   vatRatePercent Decimal        @default(23.00) @map("vat_rate_percent") @db.Decimal(5, 2)
   purchaseConfirmAboveEur Decimal? @map("purchase_confirm_above_eur") @db.Decimal(10, 2)
   bronzeMonthlyTurnoverEur Decimal? @map("bronze_monthly_turnover_eur") @db.Decimal(10, 2)
@@ -65,6 +73,9 @@ model Company {
   purchases       Purchase[]
   badgeAwards     PartnerBadgeAward[]
   auditLogs       AuditLog[]
+  privacyDraft    CompanyPrivacyDraft?
+  privacyNotices  CompanyPrivacyNotice[]
+  privacyReceipts CompanyPrivacyReceipt[]
 
   @@index([isActive, name], map: "companies_active_name_idx")
   @@map("companies")
@@ -94,6 +105,8 @@ model User {
   updatedPurchases   Purchase[]     @relation("PurchaseUpdatedBy")
   deletedPurchases   Purchase[]     @relation("PurchaseDeletedBy")
   auditLogs          AuditLog[]
+  publishedPrivacyNotices CompanyPrivacyNotice[] @relation("PrivacyNoticePublishedBy")
+  recordedPrivacyReceipts CompanyPrivacyReceipt[] @relation("PrivacyReceiptRecordedBy")
 
   @@index([companyId, role, isActive], map: "users_company_role_active_idx")
   @@map("users")
@@ -121,6 +134,7 @@ model Partner {
   purchases       Purchase[]
   badgeAwards     PartnerBadgeAward[]
   auditLogs       AuditLog[]
+  privacyReceipts CompanyPrivacyReceipt[]
 
   @@unique([companyId, id], map: "partners_company_id_uq")
   @@index([companyId, isActive, type], map: "partners_company_active_type_idx")
@@ -210,6 +224,61 @@ model PartnerBadgeAward {
   @@unique([companyId, partnerId, periodStart], map: "partner_badge_awards_company_partner_period_uq")
   @@index([companyId, periodStart, tier], map: "partner_badge_awards_company_period_tier_idx")
   @@map("partner_badge_awards")
+}
+
+model CompanyPrivacyDraft {
+  companyId         BigInt   @id @map("company_id") @db.UnsignedBigInt
+  controllerName    String   @map("controller_name") @db.VarChar(150)
+  controllerAddress String   @map("controller_address") @db.VarChar(500)
+  controllerIco     String?  @map("controller_ico") @db.VarChar(8)
+  contactEmail      String   @map("contact_email") @db.VarChar(191)
+  dpoContact        String?  @map("dpo_contact") @db.VarChar(500)
+  body              String   @db.Text
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  company           Company  @relation(fields: [companyId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "company_privacy_drafts_company_fk")
+
+  @@map("company_privacy_drafts")
+}
+
+model CompanyPrivacyNotice {
+  id                BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  companyId         BigInt   @map("company_id") @db.UnsignedBigInt
+  version           Int      @db.UnsignedInt
+  controllerName    String   @map("controller_name") @db.VarChar(150)
+  controllerAddress String   @map("controller_address") @db.VarChar(500)
+  controllerIco     String?  @map("controller_ico") @db.VarChar(8)
+  contactEmail      String   @map("contact_email") @db.VarChar(191)
+  dpoContact        String?  @map("dpo_contact") @db.VarChar(500)
+  body              String   @db.Text
+  publishedAt       DateTime @default(now()) @map("published_at") @db.DateTime(3)
+  publishedByUserId BigInt   @map("published_by_user_id") @db.UnsignedBigInt
+  company           Company  @relation(fields: [companyId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "company_privacy_notices_company_fk")
+  publishedBy       User     @relation("PrivacyNoticePublishedBy", fields: [publishedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "company_privacy_notices_publisher_fk")
+  privacyReceipts   CompanyPrivacyReceipt[]
+
+  @@unique([companyId, version], map: "company_privacy_notices_company_version_uq")
+  @@unique([companyId, id], map: "company_privacy_notices_company_id_uq")
+  @@map("company_privacy_notices")
+}
+
+model CompanyPrivacyReceipt {
+  id               BigInt                @id @default(autoincrement()) @db.UnsignedBigInt
+  companyId        BigInt                @map("company_id") @db.UnsignedBigInt
+  partnerId        BigInt                @map("partner_id") @db.UnsignedBigInt
+  noticeId         BigInt                @map("notice_id") @db.UnsignedBigInt
+  providedAt       DateTime              @map("provided_at") @db.DateTime(3)
+  method           PrivacyDeliveryMethod
+  recordedByUserId BigInt                @map("recorded_by_user_id") @db.UnsignedBigInt
+  recordedAt       DateTime              @default(now()) @map("recorded_at") @db.DateTime(3)
+  reason           String?               @db.VarChar(500)
+  company          Company               @relation(fields: [companyId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "company_privacy_receipts_company_fk")
+  partner          Partner               @relation(fields: [companyId, partnerId], references: [companyId, id], onDelete: Restrict, onUpdate: Restrict, map: "company_privacy_receipts_partner_fk")
+  notice           CompanyPrivacyNotice  @relation(fields: [companyId, noticeId], references: [companyId, id], onDelete: Restrict, onUpdate: Restrict, map: "company_privacy_receipts_notice_fk")
+  recordedBy       User                  @relation("PrivacyReceiptRecordedBy", fields: [recordedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "company_privacy_receipts_recorder_fk")
+
+  @@index([companyId, partnerId, recordedAt, id], map: "company_privacy_receipts_partner_recorded_idx")
+  @@index([companyId, noticeId], map: "company_privacy_receipts_company_notice_idx")
+  @@map("company_privacy_receipts")
 }
 
 model AuditLog {

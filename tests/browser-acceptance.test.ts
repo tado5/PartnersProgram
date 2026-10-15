@@ -4,6 +4,7 @@ import { writeFile } from "node:fs/promises";
 import { test } from "node:test";
 import { hash } from "@node-rs/argon2";
 import { chromium, type BrowserContext, type Page } from "playwright";
+import sharp from "sharp";
 
 import { prisma } from "../src/server/db";
 
@@ -30,7 +31,12 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
     // Keep the production HTTPS origin/cookies while forwarding only to the local fixture server.
     await context.route(`${origin}/**`, async (route) => {
       const url = new URL(route.request().url());
-      const response = await route.fetch({ url: `${base}${url.pathname}${url.search}`, maxRedirects: 0 });
+      const response = await route.fetch({
+        url: `${base}${url.pathname}${url.search}`, maxRedirects: 0,
+        ...(route.request().headers()["next-action"] ? {
+          headers: { ...route.request().headers(), "x-forwarded-host": url.host },
+        } : {}),
+      });
       await route.fulfill({ response });
     });
     const page = await context.newPage();
@@ -47,6 +53,14 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
     const sizes = await page.evaluate(() => ({
       viewport: document.documentElement.clientWidth,
       content: document.documentElement.scrollWidth,
+      overflowing: [...document.querySelectorAll("main *")].filter((element) =>
+        element.getBoundingClientRect().right > document.documentElement.clientWidth,
+      ).slice(0, 8).map((element) => ({
+        tag: element.tagName, classes: element.className,
+        left: element.getBoundingClientRect().left, width: element.getBoundingClientRect().width,
+        minWidth: getComputedStyle(element).minWidth, wrap: getComputedStyle(element).whiteSpace,
+        parentWidth: element.parentElement?.getBoundingClientRect().width,
+      })),
     }));
     assert.ok(sizes.content <= sizes.viewport, `Horizontal overflow: ${JSON.stringify(sizes)}`);
   }
@@ -65,7 +79,7 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
   }
 
   try {
-    const company = await prisma.company.create({ data: { name: "Browser Alpha", slug: `browser-alpha-${suffix}` } });
+    const company = await prisma.company.create({ data: { name: "Browser Alpha", slug: `browser-alpha-${suffix}`, ico: "12345678" } });
     const second = await prisma.company.create({ data: { name: "Browser Beta", slug: `browser-beta-${suffix}` } });
     const admin = await prisma.user.create({ data: {
       companyId: company.id, email: `browser-admin-${suffix}@example.test`,
@@ -440,6 +454,262 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
         assert.doesNotMatch(await page.locator("body").innerText(), /Browser Alpha Partner|Browser audit 44/);
         const response = await page.context().request.get(`${base}/api/audit-logs`);
         assert.equal(response.status(), 401);
+      });
+    }
+    if (process.env.ACCEPTANCE_PRIVACY === "1") {
+      await t.test("privacy notice publication unlocks only evidenced registration and keeps public notices token-free", async () => {
+        const page = await session(admin.email, true);
+        await page.goto(`${origin}/app/partneri/novy`);
+        await page.getByRole("alert").filter({ hasText: "Registrácia nových partnerov je zablokovaná" }).waitFor();
+        assert.equal(await page.getByRole("button", { name: "Vytvoriť partnera", exact: true }).count(), 0);
+        assert.equal(await prisma.companyPrivacyReceipt.count({ where: { partnerId: partner.id } }), 0);
+        await page.getByRole("link", { name: "Otvoriť nastavenia firmy", exact: true }).click();
+        const settings = page.locator("section").filter({
+          has: page.getByRole("heading", { name: "Ochrana osobných údajov", exact: true }),
+        }).last();
+        const body = "Informácie o ochrane údajov pre partnerov Browser Alpha. ".repeat(4)
+          + '<img src=x onerror="window.privacyXss=true">';
+        assert.equal(await settings.getByLabel("Prevádzkovateľ", { exact: true }).inputValue(), company.name);
+        assert.equal(await settings.getByLabel("IČO prevádzkovateľa", { exact: true }).inputValue(), company.ico);
+        await settings.getByText("Zobraziť alebo upraviť podmienky a lehoty", { exact: true }).click();
+        assert.doesNotMatch(await settings.locator("textarea").inputValue(), /\[DOPLNIŤ:/);
+        assert.match(await settings.locator("textarea").inputValue(), /3 roky/);
+        await settings.getByRole("button", { name: "Uložiť návrh", exact: true }).click();
+        await settings.getByRole("status").filter({ hasText: "Návrh bol uložený." }).waitFor();
+        await settings.getByRole("button", { name: "Publikovať oznámenie", exact: true }).click();
+        await settings.getByRole("alert").waitFor();
+        assert.equal(await prisma.companyPrivacyNotice.count({ where: { companyId: company.id } }), 0);
+        await settings.getByLabel("Prevádzkovateľ", { exact: true }).fill("Browser Alpha controller");
+        await settings.getByLabel("Sídlo prevádzkovateľa", { exact: true }).fill("Testovacia 1, Bratislava");
+        await settings.getByLabel("IČO prevádzkovateľa", { exact: true }).fill("12345678");
+        await settings.getByLabel("Kontaktný e-mail pre ochranu údajov", { exact: true }).fill("browser-privacy@example.test");
+        await settings.getByLabel("Zodpovedná osoba (ak je ustanovená)", { exact: true }).fill("Kontakt podľa oznámenia");
+        await settings.locator("textarea").fill(body);
+        assert.equal(await settings.getByRole("button", { name: "Publikovať oznámenie", exact: true }).isDisabled(), true);
+        await settings.getByRole("button", { name: "Uložiť návrh", exact: true }).click();
+        await settings.getByRole("status").filter({ hasText: "Návrh bol uložený." }).waitFor();
+        await settings.getByRole("button", { name: "Publikovať oznámenie", exact: true }).click();
+        await settings.getByRole("status").filter({ hasText: "Oznámenie bolo publikované." }).waitFor();
+        const notice = await prisma.companyPrivacyNotice.findFirstOrThrow({ where: { companyId: company.id } });
+        assert.equal(notice.publishedByUserId, admin.id);
+        assert.equal(notice.body, body);
+        assert.equal(await prisma.companyPrivacyReceipt.count({ where: { partnerId: partner.id } }), 0);
+        await noOverflow(page);
+
+        await page.goto(`${origin}/app/partneri/novy`);
+        const registration = page.locator("form").filter({ has: page.locator('input[name="displayName"]') });
+        await registration.locator('input[name="displayName"]').fill("Browser informed partner");
+        assert.equal(await registration.locator('input[name="privacyConfirmed"]').isChecked(), false);
+        assert.equal(await registration.locator('input[name="privacyProvidedAt"]').inputValue(), "");
+        assert.equal(await registration.locator('select[name="privacyMethod"]').inputValue(), "");
+        await registration.getByRole("button", { name: "Vytvoriť partnera", exact: true }).click();
+        assert.equal(await prisma.partner.count({ where: { companyId: company.id, displayName: "Browser informed partner" } }), 0);
+        await registration.locator('select[name="privacyMethod"]').selectOption("printed");
+        const localTime = await page.evaluate(() => {
+          const now = new Date();
+          return new Date(now.getTime() - now.getTimezoneOffset() * 60_000).toISOString().slice(0, -1);
+        });
+        await registration.locator('input[name="privacyProvidedAt"]').fill(localTime);
+        await registration.locator('input[name="privacyConfirmed"]').check();
+        const created = page.waitForResponse((response) =>
+          response.url().endsWith("/api/partners") && response.request().method() === "POST");
+        await registration.getByRole("button", { name: "Vytvoriť partnera", exact: true }).click();
+        assert.equal((await created).status(), 201);
+        await page.waitForURL((url) => /^\/app\/partneri\/\d+$/.test(url.pathname));
+        const registered = await prisma.partner.findFirstOrThrow({
+          where: { companyId: company.id, displayName: "Browser informed partner" },
+        });
+        const receipt = await prisma.companyPrivacyReceipt.findFirstOrThrow({ where: { partnerId: registered.id } });
+        assert.equal(receipt.noticeId, notice.id);
+        assert.equal(receipt.recordedByUserId, admin.id);
+        assert.equal(receipt.method, "printed");
+        assert.equal(receipt.reason, null);
+        assert.ok(receipt.providedAt >= notice.publishedAt);
+        assert.ok(receipt.providedAt <= new Date());
+        const history = page.locator("section").filter({
+          has: page.getByRole("heading", { name: "Informovanie o spracúvaní údajov", exact: true }),
+        }).last();
+        await history.getByText("Zaznamenal: Browser Alpha Admin", { exact: false }).waitFor();
+        assert.equal(await history.locator("ol > li").count(), 1);
+        assert.match(await history.locator("ol").innerText(), /V tlačenej podobe|Verzia 1/);
+        await history.locator('select[name="privacyMethod"]').selectOption("email");
+        await history.locator('input[name="privacyProvidedAt"]').fill(localTime);
+        await history.locator('input[name="privacyConfirmed"]').check();
+        await history.getByRole("button", { name: "Zaznamenať poskytnutie", exact: true }).click();
+        assert.equal(await prisma.companyPrivacyReceipt.count({ where: { partnerId: registered.id } }), 1);
+        await history.getByLabel("Dôvod ďalšieho záznamu alebo opravy", { exact: true }).fill("Browser additional email informing");
+        const appended = page.waitForResponse((response) =>
+          response.url().endsWith(`/api/partners/${registered.id}/privacy`) && response.request().method() === "POST");
+        await history.getByRole("button", { name: "Zaznamenať poskytnutie", exact: true }).click();
+        assert.equal((await appended).status(), 201);
+        await history.getByText("Dôvod: Browser additional email informing", { exact: true }).waitFor();
+        assert.equal(await history.locator("ol > li").count(), 2);
+        assert.deepEqual(await prisma.companyPrivacyReceipt.findUniqueOrThrow({ where: { id: receipt.id } }), receipt);
+        await noOverflow(page);
+
+        await page.goto(`${origin}/app/partneri`);
+        const filtered = page.waitForResponse((response) =>
+          response.url().includes("/api/partners?") && new URL(response.url()).searchParams.get("privacy") === "missing");
+        await page.getByLabel("Informovanie o spracúvaní údajov", { exact: true }).selectOption("missing");
+        await page.getByRole("button", { name: "Hľadať", exact: true }).click();
+        assert.equal((await filtered).status(), 200);
+        await page.getByRole("heading", { name: "Browser informed partner", exact: true }).waitFor({ state: "hidden" });
+        await page.getByRole("heading", { name: "Browser Alpha Partner", exact: true }).waitFor();
+        assert.equal(await page.getByRole("heading", { name: "Browser informed partner", exact: true }).count(), 0);
+        assert.doesNotMatch(await page.locator("main").innerText(), /Browser Beta Secret/);
+        const recorded = page.waitForResponse((response) =>
+          response.url().includes("/api/partners?") && new URL(response.url()).searchParams.get("privacy") === "recorded");
+        await page.getByLabel("Informovanie o spracúvaní údajov", { exact: true }).selectOption("recorded");
+        await page.getByRole("button", { name: "Hľadať", exact: true }).click();
+        assert.equal((await recorded).status(), 200);
+        await page.getByRole("heading", { name: "Browser informed partner", exact: true }).waitFor();
+        assert.equal(await page.getByRole("heading", { name: "Browser Alpha Partner", exact: true }).count(), 0);
+        await noOverflow(page);
+
+        const anonymous = await browser.newContext({ viewport: { width: 390, height: 844 } });
+        contexts.push(anonymous);
+        const publicPage = await anonymous.newPage();
+        await publicPage.goto(`${base}/gdpr`);
+        await publicPage.getByRole("heading", { name: "Ochrana osobných údajov", exact: true }).waitFor();
+        assert.doesNotMatch(await publicPage.locator("body").innerText(), /VZOR NA DOPLNENIE|DOPLNIŤ/);
+        const templateDownload = publicPage.waitForEvent("download");
+        await publicPage.getByRole("link", { name: "Stiahnuť PDF", exact: true }).click();
+        const downloadedTemplate = await templateDownload;
+        assert.equal(downloadedTemplate.suggestedFilename(), "gdpr.pdf");
+        const templateStream = await downloadedTemplate.createReadStream();
+        const templateChunks: Buffer[] = [];
+        for await (const chunk of templateStream) templateChunks.push(Buffer.from(chunk));
+        assert.equal(Buffer.concat(templateChunks).subarray(0, 5).toString(), "%PDF-");
+        await noOverflow(publicPage);
+        await publicPage.goto(`${base}/ochrana-udajov/${company.slug}?version=1`);
+        await publicPage.getByText("Browser Alpha controller", { exact: true }).waitFor();
+        assert.ok((await publicPage.locator("body").innerText()).includes(body));
+        assert.equal(await publicPage.evaluate(() => "privacyXss" in window), false);
+        assert.equal(await publicPage.locator("img").count(), 0);
+        assert.doesNotMatch(await publicPage.locator("body").innerText(), /Browser informed partner|Browser Alpha Partner|Browser Beta Secret/);
+        assert.equal(new URL(publicPage.url()).searchParams.has("token"), false);
+        const publishedDownload = publicPage.waitForEvent("download");
+        await publicPage.getByRole("link", { name: "Stiahnuť PDF", exact: true }).click();
+        assert.equal((await publishedDownload).suggestedFilename(), `ochrana-udajov-${company.slug}-v1.pdf`);
+        await noOverflow(publicPage);
+        await publicPage.goto(`${base}/k/${cardToken}`);
+        const link = publicPage.getByRole("link", { name: /ochran|údaj|oznámen/i });
+        const href = await link.getAttribute("href");
+        assert.match(href!, new RegExp(`^/ochrana-udajov/${company.slug}`));
+        assert.ok(!href!.includes(cardToken));
+        assert.match(await publicPage.locator("body").innerText(), /odkaz|kartu/i);
+
+        const global = await session(superadmin.email);
+        await global.goto(`${origin}/superadmin/firmy/${company.id}`);
+        await global.getByRole("button", { name: "Otvoriť program firmy", exact: true }).click();
+        await global.waitForURL(`${origin}/app`);
+        await global.goto(`${origin}/app/nastavenia`);
+        const readOnly = global.locator("section").filter({
+          has: global.getByRole("heading", { name: "Ochrana osobných údajov", exact: true }),
+        }).last();
+        await readOnly.getByLabel("Prevádzkovateľ", { exact: true }).waitFor();
+        assert.equal(await readOnly.getByLabel("Prevádzkovateľ", { exact: true }).isDisabled(), true);
+        assert.equal(await readOnly.getByRole("button", { name: "Uložiť návrh", exact: true }).count(), 0);
+        assert.equal(await readOnly.getByRole("button", { name: "Publikovať oznámenie", exact: true }).count(), 0);
+        await global.goto(`${origin}/app/partneri/${registered.id}`);
+        await global.locator("section").filter({
+          has: global.getByRole("heading", { name: "Informovanie o spracúvaní údajov", exact: true }),
+        }).last().getByText("Dôvod: Browser additional email informing", { exact: true }).waitFor();
+        assert.equal(await global.getByRole("button", { name: "Zaznamenať poskytnutie", exact: true }).count(), 0);
+        await global.goto(`${origin}/superadmin/firmy/${second.id}`);
+        await global.getByRole("button", { name: "Otvoriť program firmy", exact: true }).click();
+        await global.waitForURL(`${origin}/app`);
+        await global.goto(`${origin}/app/nastavenia`);
+        assert.doesNotMatch(await global.locator("main").innerText(), /Browser Alpha controller|browser-privacy@example.test/);
+        await global.goto(`${origin}/app/partneri/novy`);
+        await global.getByRole("alert").filter({ hasText: "Registrácia nových partnerov je zablokovaná" }).waitFor();
+        const sellerPage = await session(seller.email);
+        await sellerPage.goto(`${origin}/app/nastavenia`);
+        await sellerPage.waitForURL(`${origin}/app`);
+        assert.equal(await sellerPage.getByRole("heading", { name: "Ochrana osobných údajov", exact: true }).count(), 0);
+      });
+    }
+    if (process.env.ACCEPTANCE_LOGO === "1") {
+      await t.test("company logo upload, menu, mobile, public card, PDF and removal stay company-scoped", async () => {
+        const page = await session(admin.email);
+        await page.goto(`${origin}/app/nastavenia`);
+        const settings = page.locator("section").filter({
+          has: page.getByRole("heading", { name: "Logo firmy", exact: true }),
+        }).last();
+        const png = await sharp({ create: { width: 800, height: 400, channels: 4, background: "#0d9488" } }).png().toBuffer();
+        await settings.getByLabel("Vybrať logo", { exact: true }).setInputFiles({
+          name: "test-logo.png", mimeType: "image/png", buffer: png,
+        });
+        await settings.getByRole("button", { name: "Nahrať logo", exact: true }).click();
+        await settings.getByRole("status").waitFor();
+        await page.locator("aside").getByRole("img", { name: "Logo Browser Alpha", exact: true }).waitFor();
+        let imageUrl = await settings.getByRole("img", { name: "Logo Browser Alpha", exact: true }).getAttribute("src");
+        assert.match(imageUrl!, /^data:image\/png;base64,/);
+        const imageSize = await sharp(Buffer.from(imageUrl!.split(",")[1], "base64")).metadata();
+        assert.equal(imageSize.width, 512);
+        assert.equal(imageSize.height, 256);
+        const mobileAdmin = await session(admin.email, true);
+        await mobileAdmin.goto(`${origin}/app/nastavenia`);
+        await mobileAdmin.locator("header").getByRole("img", { name: "Logo Browser Alpha", exact: true }).waitFor();
+        await noOverflow(mobileAdmin);
+        await mobileAdmin.getByRole("button", { name: "Otvoriť menu", exact: true }).click();
+        await mobileAdmin.getByRole("button", { name: "Zavrieť menu", exact: true }).last().waitFor();
+        await noOverflow(mobileAdmin);
+        await mobileAdmin.getByRole("button", { name: "Zavrieť menu", exact: true }).last().click();
+        const mobile = await session(seller.email, true);
+        await mobile.locator("header").getByRole("img", { name: "Logo Browser Alpha", exact: true }).waitFor();
+        await noOverflow(mobile);
+        const anonymous = await browser.newContext();
+        contexts.push(anonymous);
+        const cardPage = await anonymous.newPage();
+        await cardPage.goto(`${base}/k/${cardToken}`);
+        await cardPage.getByRole("img", { name: "Logo Browser Alpha", exact: true }).waitFor();
+        assert.equal(await cardPage.getByRole("img").getAttribute("src"), imageUrl);
+        const replacement = await sharp({ create: { width: 128, height: 64, channels: 4, background: "#eab308" } }).webp().toBuffer();
+        await settings.getByLabel("Vybrať logo", { exact: true }).setInputFiles({
+          name: "replacement.webp", mimeType: "image/webp", buffer: replacement,
+        });
+        const updated = page.waitForResponse((response) =>
+          response.url().endsWith("/api/company/logo") && response.request().method() === "PUT");
+        await settings.getByRole("button", { name: "Nahrať logo", exact: true }).click();
+        assert.equal((await updated).status(), 200);
+        await page.waitForFunction((old) => {
+          const preview = document.querySelector<HTMLImageElement>('section img[alt="Logo Browser Alpha"]');
+          return preview && preview.src !== old;
+        }, imageUrl);
+        imageUrl = await settings.getByRole("img").getAttribute("src");
+        await cardPage.reload();
+        assert.equal(await cardPage.getByRole("img").getAttribute("src"), imageUrl);
+        const beta = await session(secondAdmin.email);
+        assert.equal(await beta.getByRole("img", { name: "Logo Browser Alpha", exact: true }).count(), 0);
+
+        await page.goto(`${origin}/app/reporty?month=2026-10`);
+        const pending = page.waitForEvent("download");
+        await page.getByRole("button", { name: "Tlačiť / stiahnuť PDF", exact: true }).click();
+        const stream = await (await pending).createReadStream();
+        const chunks: Buffer[] = [];
+        for await (const chunk of stream) chunks.push(Buffer.from(chunk));
+        assert.match(Buffer.concat(chunks).toString("latin1"), /\/Subtype \/Image/);
+        const sa = await session(superadmin.email);
+        await sa.goto(`${origin}/superadmin/firmy/${company.id}`);
+        await sa.getByRole("button", { name: "Otvoriť program firmy", exact: true }).click();
+        await sa.waitForURL(`${origin}/app`);
+        await sa.goto(`${origin}/app/nastavenia`);
+        await sa.getByRole("heading", { name: "Logo firmy", exact: true }).waitFor();
+        assert.equal(await sa.locator('input[type="file"]').count(), 0);
+        await sa.locator("aside").getByRole("img", { name: "Logo Browser Alpha", exact: true }).waitFor();
+        await sa.goto(`${origin}/superadmin/firmy/${second.id}`);
+        await sa.getByRole("button", { name: "Otvoriť program firmy", exact: true }).click();
+        await sa.waitForURL(`${origin}/app`);
+        assert.equal(await sa.getByRole("img", { name: "Logo Browser Alpha", exact: true }).count(), 0);
+
+        await page.goto(`${origin}/app/nastavenia`);
+        await settings.getByRole("button", { name: "Odstrániť logo", exact: true }).click();
+        await settings.getByRole("status").waitFor();
+        await page.locator("aside").getByRole("img", { name: "Logo Browser Alpha", exact: true }).waitFor({ state: "hidden" });
+        await cardPage.reload();
+        assert.equal(await cardPage.getByRole("img").count(), 0);
+        assert.equal((await prisma.company.findUniqueOrThrow({ where: { id: company.id } })).logoData, null);
       });
     }
     assert.deepEqual(errors, [], "Browser runtime errors");

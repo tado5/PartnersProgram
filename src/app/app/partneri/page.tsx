@@ -17,6 +17,7 @@ export default async function PartnersPage() {
       where,
       orderBy: [{ displayName: "asc" }, { id: "asc" }],
       take: 20,
+      include: { _count: { select: { privacyReceipts: true } } },
     }),
     prisma.partner.count({ where }),
   ]);
@@ -36,6 +37,7 @@ export default async function PartnersPage() {
           displayName: partner.displayName,
           phone: context.user.role === "seller" ? maskPhone(partner.phone) : partner.phone,
           isActive: partner.isActive,
+          ...(context.user.role !== "seller" ? { privacyRecorded: partner._count.privacyReceipts > 0 } : {}),
         }))}
       />
     </section>

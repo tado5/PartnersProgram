@@ -22,6 +22,7 @@ export async function GET(request: Request) {
   const report = await getPeriodReport(authorization, period, type);
   const pdf = await renderReportPdf({
     companyName: authorization.company.name,
+    companyLogo: authorization.company.logoData,
     period,
     type,
     report,

@@ -30,6 +30,8 @@ partners 1──N partner_badge_awards
 | name | VARCHAR(100) NOT NULL | zobrazované meno firmy, 2–100 znakov |
 | slug | VARCHAR(80) NOT NULL UNIQUE | nemenný interný identifikátor, malé ASCII písmená, číslice a pomlčky |
 | ico | CHAR(8) NULL | nepovinné; nie je prihlasovacím údajom |
+| logo_data | MEDIUMBLOB NULL | normalizované PNG, najviac 512 × 256 px; bez pôvodných metadát |
+| logo_version | CHAR(64) NULL | SHA-256 normalizovaného PNG; audit neobsahuje obrázok |
 | vat_rate_percent | DECIMAL(5,2) NOT NULL DEFAULT 23.00 | aktuálna sadzba DPH firmy; zmena platí pre nové nákupy |
 | purchase_confirm_above_eur | DECIMAL(10,2) NULL | voliteľný limit firmy; `NULL` = dodatočné potvrdenie vypnuté |
 | bronze_monthly_turnover_eur | DECIMAL(10,2) NULL | hranica odznaku Bronzový partner; `NULL` = vypnuté |
@@ -200,6 +202,22 @@ Vedome sa **neevidujú**: adresa, DIČ/IČ DPH, dátum narodenia, bankové údaj
 - **Indexy:** `INDEX(company_id, entity_type, entity_id, created_at)`, `INDEX(company_id, partner_id, created_at)`, `INDEX(company_id, user_id, created_at)`, `INDEX(company_id, action, created_at)`, `INDEX(company_id, created_at, id)` pre zoradený firemný audit.
 - **Obmedzenia:** `JSON_VALID` na JSON stĺpcoch; triggre `BEFORE UPDATE` a `BEFORE DELETE` vyvolajú chybu; účet aplikácie má iba `SELECT, INSERT`.
 
+## Informačné oznámenia a evidencia poskytnutia
+
+Migrácia `20261015120000_privacy_notices` pridáva tri tabuľky bez zmeny existujúcich partnerov:
+
+| Tabuľka | Údaje | Pravidlá |
+|---|---|---|
+| `company_privacy_drafts` | `company_id` PK/FK; `controller_name` (150), `controller_address` (500), nullable `controller_ico` (8), `contact_email` (191), nullable `dpo_contact` (500), `body` TEXT, `updated_at` | jeden upraviteľný návrh na firmu; monotónny čas revízie pre publikovanie |
+| `company_privacy_notices` | globálne `id`, `company_id`, `version`, snapshot polí návrhu, `published_at`, `published_by_user_id` | unique `(company_id, version)` a `(company_id, id)`; kladná verzia, text 100–20 000 znakov; po publikovaní nemenné |
+| `company_privacy_receipts` | `id`, `company_id`, `partner_id`, `notice_id`, `provided_at`, `method`, `recorded_by_user_id`, `recorded_at`, nullable `reason` | iba pridávanie; enum spôsobu `in_person/printed/email`; zložené FK k partnerovi a oznámeniu z rovnakej firmy |
+
+Časy sú `DATETIME(3)` v UTC; verejná verzia je účinná od `published_at`. Aktér publikovania/poskytnutia sa overí v service pod zámkom firmy. Pri ďalšom zázname informovania sa vyžaduje dôvod 2–255 znakov (DB stĺpec má rezervu 500); nesmie sa prepisovať starší záznam. Zložené FK vynucujú firmu partnera aj oznámenia. Triggre zakazujú `UPDATE/DELETE` publikovaných oznámení a evidencie aj migračnému účtu.
+
+Účet aplikácie má na návrhy `SELECT, INSERT, UPDATE`, na publikované oznámenia a evidenciu iba `SELECT, INSERT`. Existujúci partneri nemajú automatický záznam; stav informovania sa odvodzuje z existencie evidencie. Texty oznámení sa neukladajú do auditu. Verejná stránka zobrazuje iba snapshot oznámenia, nie aktéra či údaje partnera.
+
+Tieto tabuľky nie sú evidenciou súhlasov. Retencia, opravy osobných údajov a zákonné výmazové postupy vyžadujú samostatný návrh vrátane správy nemenných historických údajov.
+
 ---
 
 ## Izolácia väzieb a migrácia (fáza 5A)
@@ -233,7 +251,7 @@ Vedome sa **neevidujú**: adresa, DIČ/IČ DPH, dátum narodenia, bankové údaj
 | Účet | Práva | Použitie |
 |---|---|---|
 | `europodlahy_migrate` | DDL + DML na `europodlahy`, `europodlahy_test` a `europodlahy_shadow` | migrácie, seed, integračné testy |
-| `europodlahy_app` | `SELECT, INSERT, UPDATE` na `companies`, `users`, `partners`, `partner_tokens`, `purchases`; `SELECT, INSERT` na `partner_badge_awards`, `audit_logs`; bez `DELETE` ani `UPDATE` historických ocenení | bežiaca aplikácia; práva na `companies` sa doplnia vo fáze 5A |
+| `europodlahy_app` | `SELECT, INSERT, UPDATE` na `companies`, `users`, `partners`, `partner_tokens`, `purchases`, `company_privacy_drafts`; `SELECT, INSERT` na `partner_badge_awards`, `audit_logs`, `company_privacy_notices`, `company_privacy_receipts`; bez `DELETE` ani `UPDATE` nemennej histórie | bežiaca aplikácia; po migráciách spustiť `npm run db:permissions` |
 
 Účty a databázy vytvárajú init skripty v `docker/mariadb/init/`. Po migrácii sa spustí `npm run db:permissions`, aby sa nastavili tabuľkové práva aplikačného účtu.
 
