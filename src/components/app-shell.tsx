@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { useEffect, useState, type ReactNode } from "react";
 import {
-  BarChart3, Building2, ClipboardList, KeyRound, LayoutDashboard, LogOut, Menu, PanelLeftClose,
+  BarChart3, Building2, ClipboardList, FileDown, KeyRound, LayoutDashboard, LogOut, Menu, PanelLeftClose,
   PanelLeftOpen, ScanLine, Search, Settings, ShoppingCart, UserCog, Users, X,
   type LucideIcon,
 } from "lucide-react";
@@ -20,6 +20,7 @@ const icons = {
   search: Search,
   users: UserCog,
   reports: BarChart3,
+  exports: FileDown,
   settings: Settings,
   companies: Building2,
   audit: ClipboardList,
@@ -114,7 +115,7 @@ export function AppShell({
           return item.document ? (
             <DocumentLink key={item.href} href={item.href} className={className}>{content}</DocumentLink>
           ) : (
-            <Link key={item.href} href={item.href} className={className}
+            <Link key={item.href} href={item.href} className={className} onClick={() => setMobileOpen(false)}
               aria-current={active ? "page" : undefined} title={compact ? item.label : undefined}>
               {content}
             </Link>

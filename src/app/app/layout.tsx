@@ -37,6 +37,7 @@ export default async function AppLayout({
           { href: "/app/users", label: "Používatelia", icon: "users" },
           { href: "/app/reporty", label: "Reporty", icon: "reports" },
           { href: "/app/audit", label: "Audit log", icon: "audit" },
+          { href: "/app/exporty", label: "Exporty CSV", icon: "exports" },
           { href: "/app/nastavenia", label: "Nastavenia", icon: "settings" },
         ] satisfies ShellNavItem[]
       : [{ href: "/app/partneri", label: "Vyhľadať partnera", icon: "search" }] satisfies ShellNavItem[]),

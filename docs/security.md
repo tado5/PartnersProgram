@@ -2,7 +2,7 @@
 
 > Súvisí s: [IMPLEMENTACNY_PLAN.md](../IMPLEMENTACNY_PLAN.md) · [data-model](data-model.md) · [api](api.md)
 
-> Viacfiremné pravidlá a rola superadmina sú implementované vo fáze 5A pre existujúce moduly. Testy sa vykonávajú na izolovanej MariaDB; produkčná migrácia a manuálna browserová/mobilná akceptácia zostávajú samostatnými krokmi. Verejná karta, reporty a exporty sú naďalej kontraktom ďalších fáz.
+> Viacfiremné pravidlá a rola superadmina sú implementované vrátane verejnej karty, reportov, auditu a CSV exportov (fázy 5A–10). DB akceptácia používa izolovanú MariaDB; automatizované browserové testy lokálny Chrome a dotykový viewport. Produkčná migrácia a manuálna akceptácia na fyzických zariadeniach zostávajú samostatnými krokmi.
 
 ## 1. Tokeny QR/NFC
 | Pravidlo | Riešenie |
@@ -131,6 +131,8 @@ Firemné udalosti majú `company_id` danej firmy aj pri zásahu superadmina; `us
 - Pri žiadosti o výmaz sa osobné údaje partnera anonymizujú a tokeny deaktivujú; nákupy zostanú pre štatistiku.
 
 ## 8. Bezpečnostné testy (povinné pred nasadením)
+Lokálna automatizovaná akceptácia: `npm run test:phase11` (aktuálny produkčný build, izolovaná MariaDB a lokálny Chrome). Inventár route/metód je v `tests/phase11-http.test.ts`; pri pridaní explicitnej API metódy vyžaduje scenár. Rolové kontroly nepovažujeme za úplné funkčné pokrytie všetkých kombinácií payloadov. Auth.js je pokrytý session/signout kontrolami a osobitnými login/session scenármi; cron kontrolou bearer oprávnenia a existujúcimi integračnými scenármi uzatvárania mesiaca.
+
 - Matica rolí: každý endpoint × superadmin / admin / predavač / neprihlásený, aspoň dve firmy vrátane neaktívnej.
 - Zápis cez verejnú URL nie je možný.
 - Deaktivovaný token, neaktívny partner aj neaktívna firma vrátia 404; sken tokenu inej firmy tiež.

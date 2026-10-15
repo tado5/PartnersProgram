@@ -139,6 +139,141 @@ test("phase 5A database and HTTP isolation", async (t) => {
       createdByUserId: secondAdmin.id,
     } });
 
+    await t.test("audit routes enforce role, tenant filters and sanitization", async () => {
+      const auditData = {
+        action: "acceptance.audit_probe",
+        entityType: "partner",
+        oldValues: {
+          displayName: "Previous public name",
+          internalNote: "private note",
+          email: "private@example.test",
+          note: "private reason",
+          password: "private password",
+          accessToken: "private token",
+          nested: { phone: "private phone", value: "visible nested value" },
+        },
+        newValues: {
+          displayName: "Updated public name",
+          passwordHash: "private hash",
+          refreshToken: "private refresh token",
+        },
+      };
+      const firstAudit = await record({
+        ...auditData, companyId: BigInt(1), userId: BigInt(1),
+        entityId: BigInt(3), partnerId: BigInt(3),
+      });
+      const secondAudit = await record({
+        ...auditData, companyId: second.id, userId: secondAdmin.id,
+        entityId: secondPartner.id, partnerId: secondPartner.id,
+      });
+
+      const anonymous = new Browser();
+      assert.equal((await anonymous.request("/api/audit-logs")).status, 401);
+      assert.equal((await anonymous.request("/api/superadmin/audit-logs")).status, 401);
+      assert.equal((await seller.request("/api/audit-logs")).status, 403);
+      assert.equal((await seller.request("/api/superadmin/audit-logs")).status, 403);
+      assert.equal((await legacy.request("/api/superadmin/audit-logs")).status, 403);
+      assert.equal((await secondBrowser.request("/api/superadmin/audit-logs")).status, 403);
+      assert.equal((await sa.request("/api/audit-logs")).status, 400);
+
+      const firstTenant = await (await legacy.request(
+        "/api/audit-logs?action=acceptance.audit_probe&entityType=partner",
+      )).json();
+      const secondTenant = await (await secondBrowser.request(
+        "/api/audit-logs?action=acceptance.audit_probe&entityType=partner",
+      )).json();
+      assert.deepEqual(firstTenant.items.map((item: { id: string }) => item.id), [firstAudit.id.toString()]);
+      assert.deepEqual(secondTenant.items.map((item: { id: string }) => item.id), [secondAudit.id.toString()]);
+      assert.equal(firstTenant.total, 1);
+      assert.equal(secondTenant.total, 1);
+
+      const tenantFilterCases = [
+        {
+          browser: legacy,
+          auditId: firstAudit.id.toString(),
+          matchingIds: { userId: "1", entityId: "3", partnerId: "3" },
+          foreignIds: {
+            userId: secondAdmin.id.toString(),
+            entityId: secondPartner.id.toString(),
+            partnerId: secondPartner.id.toString(),
+          },
+        },
+        {
+          browser: secondBrowser,
+          auditId: secondAudit.id.toString(),
+          matchingIds: {
+            userId: secondAdmin.id.toString(),
+            entityId: secondPartner.id.toString(),
+            partnerId: secondPartner.id.toString(),
+          },
+          foreignIds: { userId: "1", entityId: "3", partnerId: "3" },
+        },
+      ];
+      for (const { browser, auditId, matchingIds, foreignIds } of tenantFilterCases) {
+        for (const filter of ["userId", "entityId", "partnerId"] as const) {
+          const matching = await browser.request(
+            `/api/audit-logs?action=acceptance.audit_probe&${filter}=${matchingIds[filter]}`,
+          );
+          const matchingBody = await matching.json();
+          assert.deepEqual(matchingBody.items.map((item: { id: string }) => item.id), [auditId],
+            `local ${filter} should match the tenant's audit`);
+          const response = await browser.request(
+            `/api/audit-logs?action=acceptance.audit_probe&${filter}=${foreignIds[filter]}`,
+          );
+          const body = await response.json();
+          assert.equal(response.status, 200);
+          assert.equal(body.total, 0, `foreign ${filter} must not return another tenant's audit`);
+        }
+      }
+
+      const sanitized = firstTenant.items[0];
+      assert.deepEqual(sanitized.oldValues, {
+        displayName: "Previous public name",
+        internalNote: "Skryté",
+        email: "Skryté",
+        note: "Skryté",
+      });
+      assert.deepEqual(sanitized.newValues, { displayName: "Updated public name" });
+      const stored = await prisma.auditLog.findUniqueOrThrow({ where: { id: firstAudit.id } });
+      assert.deepEqual(stored.oldValues, {
+        displayName: "Previous public name",
+        internalNote: "Skryté",
+        email: "Skryté",
+        note: "Skryté",
+        nested: { phone: "Skryté", value: "visible nested value" },
+      });
+      assert.deepEqual(stored.newValues, { displayName: "Updated public name" });
+
+      const globalAudit = await sa.request("/api/superadmin/audit-logs");
+      assert.equal(globalAudit.status, 200);
+      const globalBody = await globalAudit.json();
+      assert.equal(globalBody.items.some((item: { id: string }) => "oldValues" in item || "newValues" in item), false);
+      for (const companyId of ["1", second.id.toString()]) {
+        const companyAudit = await sa.request(`/api/superadmin/audit-logs?companyId=${companyId}`);
+        assert.equal(companyAudit.status, 200);
+        const companyBody = await companyAudit.json();
+        assert.ok(companyBody.items.some((item: { id: string }) => item.id ===
+          (companyId === "1" ? firstAudit.id.toString() : secondAudit.id.toString())));
+        assert.ok(companyBody.items.every((item: { company: { id: string } | null }) =>
+          item.company?.id === companyId));
+        assert.equal(companyBody.items.some((item: { oldValues?: unknown; newValues?: unknown }) =>
+          "oldValues" in item || "newValues" in item), false);
+      }
+      const selectedTenantAudit = await sa.request("/api/audit-logs?action=acceptance.audit_probe", {}, second.id.toString());
+      assert.equal(selectedTenantAudit.status, 200);
+      assert.deepEqual(
+        (await selectedTenantAudit.json()).items.map((item: { id: string }) => item.id),
+        [secondAudit.id.toString()],
+      );
+      const selectedCompany = await (await sa.request(
+        `/api/superadmin/audit-logs?companyId=${second.id}`,
+      )).json();
+      assert.ok(selectedCompany.items.some((item: { id: string }) => item.id === secondAudit.id.toString()));
+      assert.equal(selectedCompany.items[0].company.id, second.id.toString());
+      assert.equal((await sa.request("/api/superadmin/audit-logs?companyId=invalid")).status, 400);
+      assert.equal((await sa.request("/api/superadmin/audit-logs?companyId=1&page=0")).status, 400);
+    });
+
     await t.test("company+admin creation is atomic and platform guard rejects company roles", async () => {
       const duplicate = await sa.request("/api/superadmin/companies", json("POST", {
         name: "Must roll back", slug: "must-roll-back",
@@ -304,7 +439,7 @@ test("phase 5A database and HTTP isolation", async (t) => {
       assert.equal(reset.status, 200);
       assert.equal((await browser.request("/api/partners")).status, 401);
       const audit = await prisma.auditLog.findFirstOrThrow({ where: { entityId: sellerId, action: "user.password_reset" } });
-      assert.deepEqual(audit.newValues, { mustChangePassword: true });
+      assert.deepEqual(audit.newValues, {});
     });
 
     await t.test("company confirmation limit, purchase idempotency, seller date and soft delete", async () => {

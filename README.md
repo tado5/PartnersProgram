@@ -2,7 +2,7 @@
 
 Webová aplikácia na evidenciu partnerov, ich nákupov a získaných bodov. Technické a funkčné rozhodnutia sú v [implementačnom pláne](IMPLEMENTACNY_PLAN.md) a v priečinku [`docs/`](docs/).
 
-**Fázy 5A–9 implementované:** globálny superadmin spravuje firmy a vo výslovne vybranej firme používa admin funkcie. Admin a predavač patria jednej firme; používatelia, partneri, tokeny, nákupy a audit sú oddelené. Nákupový flow podporuje QR, NFC v kompatibilných prehliadačoch, ručné vyhľadanie, zápis a soft delete. Verejná karta, reporty a audit prehliadač sú dostupné; PDF report sa dá stiahnuť z reportov. CSV exporty sú plánovanou fázou 10. Mobilná a databázová akceptácia zostáva samostatným krokom.
+**Fázy 5A–10 implementované:** globálny superadmin spravuje firmy a vo výslovne vybranej firme používa admin funkcie. Admin a predavač patria jednej firme; používatelia, partneri, tokeny, nákupy a audit sú oddelené. Nákupový flow podporuje QR, NFC v kompatibilných prehliadačoch, ručné vyhľadanie, zápis a soft delete. Verejná karta, reporty a audit prehliadač sú dostupné; PDF report sa dá stiahnuť z reportov. CSV partnerov, nákupov, prehľadu a auditu je dostupné v **Exporty CSV** a priamo pri príslušných zoznamoch. Manuálna akceptácia fyzických zariadení, Excelu a produkčnej migrácie zostáva samostatným krokom.
 
 ## Požiadavky
 
@@ -39,9 +39,20 @@ APP_BASE_URL=https://partners.europodlahy.sk npm run build
 npm run test:phase6
 npm run test:phase5a
 npm run test:phase9
+npm run test:phase10
+npm run test:acceptance
+npm run test:phase11
 ```
 
-`test:phase5a` vyžaduje dostupný Docker Compose `db` a aktuálny produkčný build. Vytvorí samostatnú `europodlahy_5a_validation` (odmietne existujúcu), overí migráciu pôvodnej schémy s historickými dátami, izoláciu API/SSR, session limity, súbežné ochrany, audit, čistý `migrate deploy`, zhodu Prisma schémy a opakovaný seed; po teste DB aj testovací server odstráni. Bežnú vývojovú/testovaciu DB nemení. Mobilná/browserová akceptácia a migrácia reálnej DB sa tým nenahrádzajú.
+`test:phase5a` vyžaduje dostupný Docker Compose `db` a aktuálny produkčný build. Vytvorí samostatné schémy `europodlahy_5a_validation` a `europodlahy_5a_validation_shadow` (odmietne existujúce), overí migráciu pôvodnej schémy s historickými dátami, izoláciu API/SSR, session limity, súbežné ochrany, audit, čistý `migrate deploy`, zhodu Prisma schémy a opakovaný seed; po teste obe schémy aj testovací server odstráni. Bežnú vývojovú/testovaciu DB nemení. Mobilná/browserová akceptácia a migrácia reálnej DB sa tým nenahrádzajú.
+
+`test:browser` pridá k izolovaným DB kontrolám skutočný headless Google Chrome (`channel: chrome`, vyžaduje lokálne nainštalovaný Chrome): audit na desktope aj pri dotykovom viewporte 390 px, prepínanie firmy, ručný zápis nákupu a verejnú kartu. `test:acceptance` navyše spustí integračné CSV testy a browserové sťahovanie exportov. Aplikácia pri týchto testoch beží iba lokálne na porte 3017; testovací HTTPS origin sa presmeruje do lokálneho servera. Nepoužíva sa externá služba ani reálna firemná DB. Testy odmietnu existujúce validačné schémy; po skončení odstránia len vlastné schémy a server.
+
+`test:unit` spustí všetky jednotkové testy bez DB. `test:phase11` spojí jednotkové testy s celou izolovanou akceptáciou a rozšírenými HTTP/browserovými scenármi. Vyžaduje aktuálny produkčný build rovnako ako `test:acceptance`; nič nenasadzuje. Inventár API kontroluje 33 route súborov / 45 explicitných metód a role neprihlásený/predavač/admin/superadmin; pri novej metóde bez scenára zlyhá. Auth.js a cron majú vlastné kontrolné scenáre, nie úplnú permutáciu všetkých interných akcií. Browser dopĺňa cudzie ID, zmenu obdobia/PDF, úpravu a soft delete s dôvodom, prepnutie firmy v druhom tabe, deaktiváciu firmy a návrat v histórii po odhlásení.
+
+Pred integračnými testami vytvorte aktuálny build: `LOCAL_QUICK_LOGIN_ENABLED=false APP_BASE_URL=https://partners.europodlahy.sk npm run build`. Lokálny `.env` sa nemení. Mobilný viewport v Chrome **nenahrádza Safari na iPhone, Chrome na fyzickom Androide, kameru ani NFC**; manuálny checklist je v [docs/screens.md](docs/screens.md#5-manuálna-akceptácia-na-zariadeniach).
+
+CSV používa slovenské nastavenie čísel. Ak Excel po priamom otvorení nerozdelí stĺpce alebo nerozpozná čísla, zvoľte **Dáta → Z textu/CSV**, kódovanie **UTF-8**, oddeľovač **bodkočiarka** a slovenské miestne nastavenie (desatinná čiarka). Nezmeňte kvôli importu globálne nastavenia počítača.
 
 ## Konfigurácia
 

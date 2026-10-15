@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import type { Prisma } from "@prisma/client";
 
 import { PurchaseHistory } from "@/components/purchases/purchase-history";
+import { CsvExportForm } from "@/components/exports/csv-export-form";
 import { zonedCalendarDayRange, zonedDayRange } from "@/lib/dates";
 import { env } from "@/lib/env";
 import { parseUserId } from "@/server/auth/http";
@@ -71,9 +72,17 @@ export default async function PurchasesPage({
             {context.user.role === "seller" ? "Moje dnešné nákupy" : "Nákupy"}
           </h1>
         </div>
-        <Link className="rounded-md bg-stone-950 px-4 py-2.5 text-sm font-semibold text-white" href="/app/sken">
-          Nový nákup
-        </Link>
+        <div className="flex flex-wrap items-center gap-3">
+          {context.user.role !== "seller" ? <CsvExportForm kind="purchases" query={new URLSearchParams({
+            ...(partnerId ? { partnerId: partnerId.toString() } : {}),
+            ...(from ? { from } : {}),
+            ...(to ? { to } : {}),
+            includeDeleted: String(includeDeleted),
+          }).toString()} /> : null}
+          <Link className="rounded-md bg-stone-950 px-4 py-2.5 text-sm font-semibold text-white" href="/app/sken">
+            Nový nákup
+          </Link>
+        </div>
       </div>
       {context.user.role !== "seller" ? (
         <form method="get" className="mt-6 flex flex-wrap items-end gap-3 rounded-xl border border-stone-200 bg-white p-4">

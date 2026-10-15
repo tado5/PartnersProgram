@@ -3,7 +3,7 @@ import { PartnerType, Prisma } from "@prisma/client";
 import { parseCalendarMonth, zonedCalendarDayRange, zonedCalendarMonthRange } from "@/lib/dates";
 import { env } from "@/lib/env";
 import type { CompanyContext } from "@/server/auth/session";
-import { prisma } from "@/server/db";
+import { prisma, type DbClient } from "@/server/db";
 
 export function parseReportMonth(value: string | undefined, now = new Date()) {
   if (value === undefined) {
@@ -81,6 +81,7 @@ export async function getPeriodReport(
   context: CompanyContext,
   range: { start: Date; end: Date },
   type?: PartnerType,
+  db: DbClient = prisma,
 ) {
   const where: Prisma.PurchaseWhereInput = {
     companyId: context.companyId,
@@ -89,12 +90,12 @@ export async function getPeriodReport(
     ...(type ? { partner: { type } } : {}),
   };
   const [summary, grouped] = await Promise.all([
-    prisma.purchase.aggregate({
+    db.purchase.aggregate({
       where,
       _sum: { amount: true, netAmount: true, points: true },
       _count: { _all: true },
     }),
-    prisma.purchase.groupBy({
+    db.purchase.groupBy({
       by: ["partnerId"],
       where,
       _sum: { amount: true, netAmount: true, points: true },
@@ -102,7 +103,7 @@ export async function getPeriodReport(
       orderBy: [{ _sum: { netAmount: "desc" } }, { partnerId: "asc" }],
     }),
   ]);
-  const partners = await prisma.partner.findMany({
+  const partners = await db.partner.findMany({
     where: {
       companyId: context.companyId,
       id: { in: grouped.map((row) => row.partnerId) },

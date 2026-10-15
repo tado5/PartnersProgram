@@ -6,6 +6,7 @@ import { env } from "@/lib/env";
 import { requireCompanyPage } from "@/server/auth/session";
 import { PartnerTypeBadge, partnerTypeLabel } from "@/components/partners/partner-type-badge";
 import { ReportPdfButton } from "@/components/reports/report-pdf-button";
+import { CsvExportForm } from "@/components/exports/csv-export-form";
 import { TopPartners } from "@/components/reports/top-partners";
 import { PeriodPicker } from "@/components/period-picker";
 import { periodLabel } from "@/lib/period";
@@ -39,6 +40,7 @@ export default async function MonthlyReportsPage({
         </div>
         <div className="flex flex-wrap items-center gap-4">
           <ReportPdfButton query={`${periodQuery}${typeInput ? `&type=${typeInput}` : ""}`} />
+          <CsvExportForm kind="monthly" query={`${periodQuery}${typeInput ? `&type=${typeInput}` : ""}`} />
           <Link className="text-sm font-medium text-amber-800 underline" href="/app">Späť na dashboard</Link>
         </div>
       </div>

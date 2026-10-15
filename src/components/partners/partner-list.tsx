@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useState } from "react";
 import { useCompanyApi } from "@/components/company-context";
 import { PartnerTypeBadge } from "@/components/partners/partner-type-badge";
+import { CsvExportForm } from "@/components/exports/csv-export-form";
 
 type PartnerItem = {
   id: string;
@@ -93,12 +94,15 @@ export function PartnerList({
           </p>
         </div>
         {role === "admin" ? (
-          <Link
-            className="rounded-md bg-stone-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-stone-800"
-            href="/app/partneri/novy"
-          >
-            Nový partner
-          </Link>
+          <div className="flex flex-wrap items-center gap-3">
+            <CsvExportForm kind="partners" query={new URLSearchParams({ q: query.trim(), type, active }).toString()} />
+            <Link
+              className="rounded-md bg-stone-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-stone-800"
+              href="/app/partneri/novy"
+            >
+              Nový partner
+            </Link>
+          </div>
         ) : null}
       </div>
 

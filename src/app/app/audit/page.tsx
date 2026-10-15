@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { AuditEntryList, type AuditEntryItem } from "@/components/audit/audit-entry-list";
+import { CsvExportForm } from "@/components/exports/csv-export-form";
 import { auditActionLabels, auditEntityLabels } from "@/lib/audit";
 import { env } from "@/lib/env";
 import { parseCompanyAuditFilters, listCompanyAuditLogs } from "@/server/repositories/audit-logs";
@@ -56,7 +57,10 @@ export default async function AuditPage({ searchParams }: {
 
   return (
     <section>
-      <h1 className="text-3xl font-semibold tracking-tight text-stone-950">Audit log</h1>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <h1 className="text-3xl font-semibold tracking-tight text-stone-950">Audit log</h1>
+        <CsvExportForm kind="audit-logs" query={params.toString()} />
+      </div>
       <p className="mt-1 max-w-3xl text-xs leading-5 text-stone-600">
         Nemenná história zmien a prístupov v programe firmy. Citlivé údaje, ako heslá a kontaktné poznámky, sa nezobrazujú.
       </p>

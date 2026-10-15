@@ -4,7 +4,7 @@
 
 API tvoria Route Handlers v `src/app/api/` v tej istej Next.js aplikácii.
 
-> **Fázy 5A–9 implementované:** `/api/superadmin/*`, používatelia, partneri, tokeny, nákupy, reporty a firemný audit sú dostupné a firemne izolované. CSV exporty zostávajú ďalšou fázou.
+> **Fázy 5A–10 implementované:** `/api/superadmin/*`, používatelia, partneri, tokeny, nákupy, reporty, firemný audit a CSV exporty sú dostupné a firemne izolované.
 
 ## Spoločné pravidlá
 - JSON; chyba má tvar `{ error: { code, message, fields? } }`.
@@ -105,12 +105,16 @@ Odpoveď obsahuje aktéra, udalosť, dôvod, bezpečné porovnanie starých a no
 ## 7. Exporty (CSV)
 | Metóda | Endpoint | Rola |
 |---|---|---|
-| GET | `/api/exports/partners.csv` | A |
-| GET | `/api/exports/purchases.csv?from=&to=&partnerId=&includeDeleted=` | A |
-| GET | `/api/exports/monthly.csv?year=&month=` | A |
-| GET | `/api/exports/audit-logs.csv?from=&to=` | A |
+| GET | `/api/exports/partners.csv?q=&type=&active=all` | A, SA vo vybranej firme |
+| GET | `/api/exports/purchases.csv?from=&to=&partnerId=&includeDeleted=false` | A, SA vo vybranej firme |
+| GET | `/api/exports/monthly.csv?month=YYYY-MM&type=` alebo `?from=YYYY-MM-DD&to=YYYY-MM-DD&type=` | A, SA vo vybranej firme |
+| GET | `/api/exports/audit-logs.csv?from=&to=&userId=&action=&entityType=&entityId=&partnerId=` | A, SA vo vybranej firme |
 
-Formát: UTF-8 s BOM, oddeľovač `;`, desatinná čiarka, dátum `dd.mm.rrrr HH:mm`, ochrana proti CSV injection. Každý export sa zapíše do auditu.
+Formát: UTF-8 s BOM, oddeľovač `;`, riadky CRLF, desatinná čiarka, dátum `dd.mm.rrrr HH:mm` v `APP_TIMEZONE`, escapované úvodzovky a ochrana proti CSV injection. Odpoveď je príloha `text/csv`, `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`. Export nie je stránkovaný a zahŕňa všetky zodpovedajúce riadky; UI neposiela `page`.
+
+`active` je `all`, `true` alebo `false`; typ partnera má rovnaké hodnoty ako pri zozname partnerov. Dátumy nákupov a auditu sú celé kalendárne dni vrátane koncového dňa v `APP_TIMEZONE`. Prázdne filtre znamenajú bez obmedzenia. Zmazané nákupy sa štandardne vynechajú; `includeDeleted=true` ich zahrnie s označením stavu. Mesačný prehľad používa rovnaký výpočet ako report, vždy bez zmazaných nákupov; vlastné obdobie je najviac 366 dní. Podporovaný je aj pôvodný zápis `year=YYYY&month=M`.
+
+Admin nesmie zmeniť firmu hlavičkou; superadmin posiela explicitné `X-Company-Id` a UI aj `X-Company-Selection`. Predavač dostane 403, neprihlásený 401, neplatné filtre 400, cudzie vzťahové ID neutrálnu 404. Neaktívnu firmu môže exportovať iba superadmin. Auditový CSV obsahuje iba bezpečné hodnoty ako auditové UI, nie IP, user-agent, heslá ani tokeny. Úspešné vytvorenie súboru zapíše `export.csv` s typom, filtrami a počtom riadkov; pri zlyhaní zápisu auditu sa súbor nevráti.
 
 ## 8. Verejné
 | Metóda | Endpoint | Účel |

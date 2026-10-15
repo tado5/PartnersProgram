@@ -17,7 +17,7 @@ Jednoduchá, hotová webová aplikácia, ktorá:
 
 Koncový zákazník nedostáva zľavu. Systém iba eviduje.
 
-**Rozšírenie schválené 2026-10-08:** superadmin môže vytvárať a spravovať všetky firmy aj ich obchodné údaje. Admin a predavač majú prístup iba k svojej firme. Fáza 5A je implementovaná pre existujúce moduly (podrobnosti a overenia nižšie); nasledujúce funkčné fázy zostávajú plánované. „Firma“ ako prevádzkovateľ programu je samostatná entita, nie typ partnera `company`.
+**Rozšírenie schválené 2026-10-08:** superadmin môže vytvárať a spravovať všetky firmy aj ich obchodné údaje. Admin a predavač majú prístup iba k svojej firme. Implementované moduly a zostávajúca akceptácia sú uvedené pri jednotlivých fázach nižšie. „Firma“ ako prevádzkovateľ programu je samostatná entita, nie typ partnera `company`.
 
 ## 2. Dokumentácia
 
@@ -181,18 +181,22 @@ Pravidlo: fáza je hotová, až keď prejdú všetky body „Hotové keď“. Ka
 - **Závislosti:** Fázy 3 – 8 vrátane 5A (audit sa zapisuje priebežne od fázy 3); firemný admin vidí iba audit svojej firmy, platformový audit iba superadmin.
 - **Hotové keď:** každá úprava a zmazanie nákupu má dôvod a pôvodné aj nové hodnoty; audit sa nedá zmeniť cez aplikáciu ani SQL.
 - **Stav (2026-10-14):** implementované firemné audit rozhranie `/app/audit`, platformový prehľad `/superadmin/audit` a `GET /api/audit-logs`; firemný audit má filtre dátumu, aktéra, akcie, entity a ID, serverové stránkovanie a povinný firemný rozsah. Audit sa zobrazuje aj v detaile partnera a bezpečné porovnanie starých/nových hodnôt v detaile nákupu. Auditové zápisy pred uložením vynechávajú kľúče hesiel/tokenov a maskujú kontaktné a interné poznámky; čítanie filtruje aj historické JSON hodnoty. Záznamy zostávajú iba na čítanie. Zostáva overiť na DB matice rolí/tenantov a vizuálne browserové správanie; nemennosť DB-triggerov sa overuje v integračných akceptačných testoch fázy 11.
+- **Doplnené overenie (2026-10-15):** pred začatím exportov prešlo 17 DB/HTTP testov na izolovanej dvojfiremnej MariaDB vrátane matice rolí auditu, cudzích filtrov, maskovania a nemenných triggerov; tiež čistý deploy migrácií a kontrola zhody schémy. Lokálny Chrome overil filtre, stránkovanie, detaily pred/po, izoláciu pri prepnutí firmy a odmietnutie predavača na desktope aj pri dotykovom viewporte 390 px. Opravené zatvorenie mobilného menu pri odkaze na tú istú cestu s inými filtrami. Toto nenahrádza fyzický iPhone/Android ani produkčnú migráciu.
 
 ### Fáza 10 – Exporty
 - **Cieľ:** CSV pre admina.
 - **Úlohy:** CSV (BOM, `;`, desatinná čiarka); partneri, nákupy, mesačný prehľad, audit; ochrana proti CSV injection; audit exportov.
 - **Závislosti:** Fázy 5A, 8 a 9; exporty musia filtrovať firmu aj všetky súvisiace entity.
 - **Hotové keď:** CSV sa v Exceli otvorí správne a súčty sedia s reportom.
+- **Stav (2026-10-15):** implementované štyri CSV endpointy, stránka `/app/exporty`, menu a priame exporty filtrov zo zoznamov/reportu/auditu a detailu partnera. UTF-8 BOM, bodkočiarka, CRLF, desatinná čiarka, dátumy v `APP_TIMEZONE`, bezpečné bunky a audit `export.csv` s typom, bezpečnými filtrami a počtom riadkov. Exporty nie sú obmedzené stránkou ani počtom riadkov; DB čítania sú dávkované v konzistentnej transakcii. Mesačné súčty používajú rovnakú službu ako report. Prešli integračné testy všetkých štyroch endpointov (roly, dve firmy, filtre, cudzie ID, dátumy, zmazané, súčty, audit), browserové stiahnutie na desktope aj pri 390 px a produkčný build. **Implementácia je hotová, akceptácia fázy nie je úplne uzavretá:** lokálny Excel pri priamom otvorení používa iné miestne nastavenie; kompletný import UTF-8/bodkočiarka/desatinná čiarka a fyzický iPhone/Android zostávajú na manuálne overenie podľa `docs/screens.md`.
 
 ### Fáza 11 – Testy
 - **Cieľ:** overiť funkčnosť a bezpečnosť.
 - **Úlohy:** unit testy (body, suma, tokeny, CSV, hranice mesiaca); integračné testy na DB `europodlahy_test` (matica superadmin/admin/predavač/neprihlásený × aspoň dve firmy, audit, soft delete, tokeny, migrácia); E2E v Playwright kontajneri vrátane prepínania firmy, deaktivácie, priamych cudzích ID, reportov, exportov a cache; manuálny checklist na zariadeniach.
 - **Závislosti:** Fázy 1 – 10 (testy sa píšu priebežne).
 - **Hotové keď:** všetky testy prejdú, matica rolí je pokrytá úplne a manuálny checklist je odškrtnutý.
+- **Priebežná akceptácia (2026-10-15):** `test:phase5a` pokrýva izolovanú DB, matice auditu, migrácie a nemennosť. `test:browser` pridáva skutočný lokálny Chrome s desktopovým/dotykovým viewportom; okrem auditu preveruje ručné vyhľadanie a zápis nákupu 19,99 € → 16,25 € netto / 16 bodov a verejnú kartu bez interných údajov. Kompletná fáza 11 nie je uzavretá: checklist fyzických zariadení a Excelu v `docs/screens.md` zostáva otvorený.
+- **Lokálne overenie fázy 11 (2026-10-15):** `npm run test:phase11` prešlo: 23 unit, 17 pôvodných DB/HTTP, 50 nových HTTP/inventárnych, 8 CSV a 14 browserových testov (počty runnera zahŕňajú nadradené testy). Inventár 33 API route súborov / 45 explicitných metód má 180 rolových prípadov a kontroly chýbajúceho firemného kontextu; Auth.js overuje session/signout a cron chýbajúci bearer, nie všetky interné akcie. Doplnené limity/expirácia/IP a proxy 429/405, vydanie a odtlačok tokenu, cudzie ID/payloady a deaktivované programy. Browser overil aj cudzie SSR ID, zmenu mesiaca a obdobia, PDF, úpravu a soft delete s dôvodom/auditom, escapovanie poznámky, zahodenie formulára pri prepnutí firmy v inom tabe, deaktiváciu a odhlásenie/návrat v histórii. Akceptácia používa lokálny Chrome, nie plánovaný Playwright kontajner; skutočné iOS/Android, kamera/NFC a úplný Excel import sú odložené až po nasadení podľa dohody. **Lokálna automatizovaná časť je overená; celá fáza 11 zostáva podmienená manuálnym checklistom. Nasadenie sa tým nevykonalo.**
 
 ### Fáza 12 – Príprava na nasadenie
 - **Cieľ:** aplikácia pripravená na produkčnú prevádzku.

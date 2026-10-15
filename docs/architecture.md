@@ -7,7 +7,7 @@
 - **Reprodukovateľnosť len z priečinka projektu:** všetky závislosti sú v `package.json` a kontajnery v `docker-compose.yml` (pozri [deployment](deployment.md)).
 - **Server je jediný zdroj pravdy:** body, oprávnenia aj validáciu rieši server. Kontroly v UI slúžia iba na pohodlie používateľa.
 - **Jednoduchosť MVP:** žiadne mikroslužby, fronty ani cache vrstvy.
-- **Viacfiremný režim (implementovaná fáza 5A):** spoločná aplikácia a DB, oddelené programy cez `company_id`; existujúce moduly majú centrálne guardy a firemné filtre. Nákupové UI, verejná karta, reporty a exporty zostávajú cieľom ďalších fáz.
+- **Viacfiremný režim (implementované fázy 5A–10):** spoločná aplikácia a DB, oddelené programy cez `company_id`; existujúce moduly vrátane nákupového UI, verejnej karty, reportov, auditu a CSV exportov majú centrálne guardy a firemné filtre.
 
 ## 2. Prehľad
 ```

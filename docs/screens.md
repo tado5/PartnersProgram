@@ -5,7 +5,7 @@
 Všetky obrazovky sú React stránky v jednej Next.js aplikácii. Aplikácia je navrhnutá mobile-first: predavač musí vedieť pohodlne dokončiť celý pracovný postup na telefóne; tablet aj desktop sú podporované a administrácia je pohodlná aj na PC. Nejde o samostatnú natívnu mobilnú aplikáciu.
 Legenda: **SA** = superadmin, **A** = admin, **P** = predavač, **Pa** = partner (anonymný).
 
-> **Fázy 5A–9 implementované:** admin a predavač používajú obrazovky iba pre vlastnú firmu; superadmin po výslovnom výbere firmy používa admin obrazovky. Pás nad obsahom zobrazuje firmu, rolu SA a stav programu; menu je v bočnom paneli (pozri časť 3). Dashboardy, mesačný report, filtre histórie nákupov, nákupový skener/formulár a firemný audit prehliadač sú dostupné. CSV exporty zostávajú plánovanou funkciou.
+> **Fázy 5A–10 implementované:** admin a predavač používajú obrazovky iba pre vlastnú firmu; superadmin po výslovnom výbere firmy používa admin obrazovky. Pás nad obsahom zobrazuje firmu, rolu SA a stav programu; menu je v bočnom paneli (pozri časť 3). Dashboardy, mesačný report, filtre histórie nákupov, nákupový skener/formulár, firemný audit a CSV exporty sú dostupné.
 
 ## 1. Používateľské flow
 
@@ -160,13 +160,16 @@ Partneri → Nový partner → Uložiť → Detail → „Vygenerovať QR“
 - **Zobrazuje:** čas, používateľa, akciu, entitu, partnera, dôvod a bezpečné porovnanie pôvodných a nových hodnôt; citlivé kontaktné údaje, heslá a tokeny sa nezobrazujú.
 - **Vzhľad:** kompaktný zoznam s oddelenými riadkami; porovnanie pred/po sa rozbalí cez „Podrobnosti zmeny“. Rovnaký štýl sa používa v detaile partnera a nákupu, platformový audit má kompaktné riadky bez JSON podrobností.
 - **Farebné označenie:** dátum má jemný jantárový badge s ikonou kalendára, čas neutrálny sivý badge s hodinami; typ udalosti používa jantárovú, indigovú alebo teal paletu existujúcich odznakov projektu. Dátum aj čas sa zobrazujú v `Europe/Bratislava`.
-- **Akcie:** filtrovať a stránkovať. **Bez úprav a mazania; export patrí do fázy 10.**
+- **Akcie:** filtrovať, stránkovať a stiahnuť CSV všetkých udalostí zodpovedajúcich filtrom. **Bez úprav a mazania.**
 - **Filtre:** dátum od–do (vrátane oboch dní v `APP_TIMEZONE`), používateľ, akcia, typ a ID záznamu, ID partnera.
 - **Údaje:** `GET /api/audit-logs`.
 
 ### 2.12 Exporty – `/app/exporty`
-- **Kto:** A.
-- **Akcie:** stiahnuť CSV partnerov, nákupov, mesačného prehľadu a auditu.
+- **Kto:** A; SA po výslovnom výbere firmy. Predavač exporty v menu ani pri zoznamoch nemá.
+- **Akcie:** štyri samostatné formuláre na stiahnutie CSV partnerov, nákupov, mesačného prehľadu a auditu. Súbor zahŕňa všetky zodpovedajúce riadky, nie iba aktuálnu stranu.
+- **Filtre:** partneri – vyhľadávanie, typ, stav; nákupy – dátumy, ID partnera a zmazané; prehľad – mesiac a typ partnera; audit – dátumy, akcia, typ a ID záznamu, ID partnera a používateľa.
+- **Priame exporty:** tlačidlo „Stiahnuť CSV“ pri partneroch, nákupoch, reporte a audite zachová filtre; v detaile partnera exportuje jeho nákupy (vrátane zmazaných) alebo audit. V reporte rešpektuje aj vlastné obdobie od–do.
+- **Priebeh:** počas prípravy je tlačidlo zakázané, zlyhanie sa zobrazí pri formulári. Každý úspešný export sa audituje. Sťahované kontaktné a interné údaje musí admin uchovávať bezpečne.
 - **Údaje:** `GET /api/exports/*.csv`.
 
 ### 2.13 Používatelia – `/app/pouzivatelia`
@@ -200,3 +203,22 @@ Navigácia je bočný panel (spoločný komponent `AppShell` pre `/app` aj `/sup
 - **Údaje:** `GET/PATCH /api/company/settings`; zmena sa zapisuje do auditu.
 
 Neaktívna firma má viditeľné upozornenie: superadmin smie prezerať/exportovať históriu a spravovať firmu, nie vydávať tokeny alebo zapisovať/meniť/mazať nákupy. Pred aktiváciou musí mať firma aktívneho admina.
+
+## 5. Manuálna akceptácia na zariadeniach
+
+Automatizovaný `npm run test:acceptance` používa lokálny Chrome na desktope a dotykový viewport 390 × 844 px. Je to emulácia rozmerov a dotyku, **nie akceptácia Safari/iOS ani fyzického Androidu**. Nasledujúce položky zostávajú otvorené, kým sa skutočne nevykonajú na uvedených zariadeniach. Použiť testovaciu firmu a testovacie karty; výsledky neoverovať na reálnych zákazníckych údajoch.
+
+| Scenár | iPhone / Safari | Android / Chrome |
+|---|---|---|
+| Prihlásenie, menu, navigácia a odhlásenie; po návrate sa neukážu prístupné firemné údaje | neoverené | neoverené |
+| Povolenie kamery, QR sken, odmietnutie povolenia a prechod na ručné vyhľadanie | neoverené | neoverené |
+| Ručné vyhľadanie, suma 19,99 € pri 23 % DPH → 16,25 € netto / 16 bodov, jedno uloženie | neoverené | neoverené |
+| Naskenovanie vytlačeného QR alebo načítanie NFC kartou otvorí tú istú verejnú kartu bez kontaktov a poznámok | neoverené | neoverené |
+| Web NFC zo skenera; pri nepodporovanom prehliadači dostupný QR/ručný zápis | nepodporované; overiť náhradný tok | neoverené na kompatibilnom zariadení |
+| Report: zmena mesiaca aj vlastného obdobia, správne body/súčty, bez vodorovného pretekania | neoverené | neoverené |
+| Audit: filtre, staršie/novšie strany, rozbalenie zmien, prepnutie firmy bez starých dát | neoverené | neoverené |
+| CSV a PDF: stiahnutie/uloženie, zachovanie filtrov, zrozumiteľná chyba bez pripojenia | neoverené | neoverené |
+
+Samostatná kontrola Excelu: otvoriť každý zo štyroch CSV, overiť diakritiku, rozdelenie stĺpcov bodkočiarkou, desatinnú čiarku, dátum/čas, súčty proti reportu a nevyhodnotenie testovacej hodnoty začínajúcej `=`, `+`, `-` alebo `@`. Pri inom miestnom nastavení použiť import **Dáta → Z textu/CSV**, **UTF-8**, oddeľovač **bodkočiarka**, slovenské miestne nastavenie/desatinnú čiarku. Automatizované overenie CSV formátu nenahrádza otvorenie v cieľovej verzii Excelu.
+
+**Overenie 2026-10-15:** lokálny Excel pre Mac 16.113.4 pri priamom otvorení použil čiarku ako oddeľovač, preto slovenské CSV nerozdelil správne. Explicitný textový import rozdelil sedem stĺpcov reportu a načítal 24,60 / 20,00 ako čísla, ale AppleScript import použil nesprávne kódovanie; pokus o explicitný UTF-8 import cez query table skončil chybou Excelu. Kompletná akceptácia diakritiky a bezpečných buniek v Exceli teda **nie je potvrdená** a zostáva na manuálny import s nastavením vyššie. Formát CSV sa nemení na čiarkový, pretože záväzný kontrakt vyžaduje bodkočiarku a desatinnú čiarku.

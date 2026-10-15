@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 
 // Isolated Docker DB only: never uses or resets existing development/test databases.
 const database = "europodlahy_5a_validation";
+const shadowDatabase = "europodlahy_5a_validation_shadow";
 const defaults = dotenv.parse(readFileSync(".env.example"));
 const containerEnv = execFileSync("docker", ["compose", "exec", "-T", "db", "printenv"], { encoding: "utf8" });
 const values = Object.fromEntries(containerEnv.split("\n").filter((line) => line.includes("="))
@@ -20,14 +21,19 @@ function sql(input, useDatabase = true) {
     throw new Error("Isolated validation SQL failed (statement details suppressed).");
   }
 }
-assert.equal(sql(`SELECT COUNT(*) FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='${database}';`, false).trim(), "0",
+assert.equal(sql(`SELECT COUNT(*) FROM information_schema.SCHEMATA
+  WHERE SCHEMA_NAME IN ('${database}', '${shadowDatabase}');`, false).trim(), "0",
   "Validation database already exists; refuse to overwrite it.");
 let server;
 let created = false;
+let shadowCreated = false;
 try {
-  sql(`CREATE DATABASE ${database} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-    GRANT ALL PRIVILEGES ON ${database}.* TO 'europodlahy_migrate'@'%';`, false);
+  sql(`CREATE DATABASE ${database} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`, false);
   created = true;
+  sql(`CREATE DATABASE ${shadowDatabase} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`, false);
+  shadowCreated = true;
+  sql(`GRANT ALL PRIVILEGES ON ${database}.* TO 'europodlahy_migrate'@'%';
+    GRANT ALL PRIVILEGES ON ${shadowDatabase}.* TO 'europodlahy_migrate'@'%';`, false);
   sql(readFileSync("prisma/migrations/20261007083557_init/migration.sql", "utf8"));
   sql(readFileSync("prisma/migrations/20261007100000_partner_code_case_check/migration.sql", "utf8"));
   const password = randomBytes(24).toString("base64url");
@@ -54,7 +60,12 @@ try {
   sql(readFileSync("prisma/migrations/20261013110000_company_purchase_confirmation/migration.sql", "utf8"));
   sql(readFileSync("prisma/migrations/20261013120000_monthly_partner_badges/migration.sql", "utf8"));
   sql(readFileSync("prisma/migrations/20261013130000_purchase_vat/migration.sql", "utf8"));
+  sql(readFileSync("prisma/migrations/20261014090000_purchase_vat_drop_default/migration.sql", "utf8"));
+  sql(readFileSync("prisma/migrations/20261014100000_audit_company_created_index/migration.sql", "utf8"));
   assert.equal(sql("SELECT amount,net_amount,vat_rate_percent,points FROM purchases WHERE id=5;").trim(), "19.99\t16.25\t23.00\t16");
+  assert.equal(sql("SELECT COLUMN_DEFAULT IS NULL FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='purchases' AND COLUMN_NAME='vat_rate_percent';").trim(), "1");
+  assert.equal(sql("SELECT COUNT(DISTINCT INDEX_NAME) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='audit_logs' AND INDEX_NAME='audit_logs_company_created_idx';").trim(), "1");
+  assert.equal(sql("SELECT id,user_id,action,entity_type,entity_id,partner_id,old_values,new_values,reason,ip_address,user_agent,created_at FROM audit_logs;"), originalAudit);
   for (const forbidden of ["UPDATE audit_logs SET action='changed' WHERE id=6;", "DELETE FROM audit_logs WHERE id=6;"]) {
     assert.throws(() => sql(forbidden));
   }
@@ -72,7 +83,8 @@ try {
   assert.throws(() => execFileSync("docker", ["compose", "exec", "-T", "db", "bash", "-c",
     `MYSQL_PWD="$DB_APP_PASSWORD" mariadb -ueuropodlahy_app ${database}`],
   { input: "DELETE FROM purchases WHERE id=5;", stdio: ["pipe", "pipe", "pipe"] }));
-  const url = (user, password) => `mysql://${user}:${encodeURIComponent(password)}@127.0.0.1:3308/${database}`;
+  const url = (user, password, schema = database) =>
+    `mysql://${user}:${encodeURIComponent(password)}@127.0.0.1:3308/${schema}`;
   const badgeCronSecret = randomBytes(32).toString("base64url");
   const env = {
     ...process.env, ...defaults, NODE_ENV: "production", LOCAL_QUICK_LOGIN_ENABLED: "false",
@@ -80,12 +92,13 @@ try {
     AUTH_SECRET: randomBytes(48).toString("base64url"), AUTH_TRUST_HOST: "true",
     DATABASE_URL: url("europodlahy_app", values.DB_APP_PASSWORD),
     MIGRATE_DATABASE_URL: url("europodlahy_migrate", values.DB_MIGRATE_PASSWORD),
+    SHADOW_DATABASE_URL: url("europodlahy_migrate", values.DB_MIGRATE_PASSWORD, shadowDatabase),
     TEST_DATABASE_URL: url("europodlahy_migrate", values.DB_MIGRATE_PASSWORD),
     PHASE5A_PASSWORD: password, PHASE5A_TOKEN: tokenValue,
     BADGE_CRON_SECRET: badgeCronSecret, PHASE7_BADGE_CRON_SECRET: badgeCronSecret,
     RATE_LIMIT_LOGIN_PER_MIN: "1000", RATE_LIMIT_PUBLIC_PER_MIN: "1000",
   };
-  server = spawn("node", ["node_modules/next/dist/bin/next", "start", "-p", "3017"], { env, stdio: "ignore" });
+  server = spawn("node", ["node_modules/next/dist/bin/next", "start", "-p", "3017"], { env, stdio: "inherit" });
   for (let attempt = 0; attempt < 60; attempt++) {
     if (server.exitCode !== null) throw new Error("Validation server failed to start.");
     try { if ((await fetch("http://127.0.0.1:3017/login")).ok) break; } catch {}
@@ -97,12 +110,34 @@ try {
   });
   const result = await new Promise((resolve) => child.once("exit", resolve));
   assert.equal(result, 0, "Phase 5A regression tests failed.");
+  if (process.env.ACCEPTANCE_PHASE11 === "1") {
+    const phase11 = spawn("node", ["--import", "tsx", "--test", "tests/phase11-http.test.ts"], {
+      env: { ...env, DATABASE_URL: env.TEST_DATABASE_URL }, stdio: "inherit",
+    });
+    const phase11Result = await new Promise((resolve) => phase11.once("exit", resolve));
+    assert.equal(phase11Result, 0, "Phase 11 HTTP/DB acceptance tests failed.");
+  }
+  if (process.env.ACCEPTANCE_EXPORTS === "1") {
+    const exports = spawn("node", ["--import", "tsx", "--test", "tests/exports-acceptance.test.ts"], {
+      env: { ...env, DATABASE_URL: env.TEST_DATABASE_URL }, stdio: "inherit",
+    });
+    const exportResult = await new Promise((resolve) => exports.once("exit", resolve));
+    assert.equal(exportResult, 0, "CSV export acceptance tests failed.");
+  }
+  if (process.env.ACCEPTANCE_BROWSER === "1") {
+    const browser = spawn("node", ["--import", "tsx", "--test", "tests/browser-acceptance.test.ts"], {
+      env: { ...env, DATABASE_URL: env.TEST_DATABASE_URL }, stdio: "inherit",
+    });
+    const browserResult = await new Promise((resolve) => browser.once("exit", resolve));
+    assert.equal(browserResult, 0, "Browser acceptance tests failed.");
+  }
   server.kill("SIGTERM");
   await new Promise((resolve) => server.once("exit", resolve));
   sql(`DROP DATABASE ${database}; CREATE DATABASE ${database} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`, false);
   const deploy = spawnSync("npm", ["run", "db:deploy"], {
     env: { ...env, DATABASE_URL: env.TEST_DATABASE_URL }, encoding: "utf8",
   });
+  if (deploy.status !== 0) console.error(deploy.stdout, deploy.stderr);
   assert.equal(deploy.status, 0, "Prisma migrate deploy must succeed on a fresh isolated database.");
   const diff = spawnSync("node", ["node_modules/prisma/build/index.js", "migrate", "diff",
     "--from-schema-datasource", "prisma/schema.prisma", "--to-schema-datamodel", "prisma/schema.prisma",
@@ -138,6 +173,9 @@ try {
       sql(`REVOKE ALL PRIVILEGES ON ${database}.${table} FROM 'europodlahy_app'@'%';`, false);
     }
     sql(`REVOKE ALL PRIVILEGES ON ${database}.* FROM 'europodlahy_migrate'@'%'; DROP DATABASE ${database};`, false);
+    if (shadowCreated) {
+      sql(`REVOKE ALL PRIVILEGES ON ${shadowDatabase}.* FROM 'europodlahy_migrate'@'%'; DROP DATABASE ${shadowDatabase};`, false);
+    }
     console.info("Isolated validation database removed; development/test databases untouched.");
   }
 }

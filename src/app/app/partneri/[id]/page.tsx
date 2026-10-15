@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 
 import { PartnerDetails } from "@/components/partners/partner-details";
+import { CsvExportForm } from "@/components/exports/csv-export-form";
 import { PartnerTokenManager } from "@/components/partners/partner-token-manager";
 import { AuditEntryList, type AuditEntryItem } from "@/components/audit/audit-entry-list";
 import { PurchaseHistory, type PurchaseItem } from "@/components/purchases/purchase-history";
@@ -153,7 +154,10 @@ export default async function PartnerDetailPage({
         ) : <p className="mt-4 text-sm text-stone-600">Zatiaľ bez uzavretých mesačných ocenení.</p>}
       </section>
       <section className="mt-8">
-        <h2 className="mb-4 text-xl font-semibold">Audit partnera</h2>
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+          <h2 className="text-xl font-semibold">Audit partnera</h2>
+          <CsvExportForm kind="audit-logs" query={`partnerId=${partner.id}`} />
+        </div>
         <AuditEntryList items={auditItems} />
         {auditEntries.length === 50 ? (
           <Link href={`/app/audit?partnerId=${partner.id.toString()}`} className="mt-3 inline-block text-sm text-amber-800 underline">Zobraziť v audite firmy</Link>
@@ -165,12 +169,15 @@ export default async function PartnerDetailPage({
             <h2 className="text-xl font-semibold">Nákupy</h2>
             <p className="mt-1 text-sm text-stone-600">História nákupov partnera vrátane zmazaných.</p>
           </div>
+          <div className="flex flex-wrap items-center gap-3">
+          <CsvExportForm kind="purchases" query={`partnerId=${partner.id}&includeDeleted=true`} />
           {partner.isActive && context.company.isActive ? (
             <Link className="rounded-md bg-stone-950 px-4 py-2.5 text-sm font-semibold text-white"
               href={`/app/nakupy/novy?partner=${partner.id.toString()}`}>
               Pridať nákup
             </Link>
           ) : null}
+          </div>
         </div>
         <PurchaseHistory
           role="admin"

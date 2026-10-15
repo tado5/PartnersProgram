@@ -41,4 +41,17 @@ test("audit display exposes only labelled fields and never returns secret values
     amount: "125.00",
     note: "Skryté",
   });
+
+});
+
+test("export audit details expose counts and safe filters without arbitrary nested values", () => {
+  const values = {
+    type: "partners", rowCount: 12,
+    filters: { type: "installer", q: "Skryté", from: "2026-10-01", token: "secret", arbitraryField: "private" },
+  };
+  assert.deepEqual(publicAuditValues(values), {
+    type: "partners", rowCount: 12,
+    filters: '{"type":"installer","q":"Skryté","from":"2026-10-01"}',
+  });
+  assert.equal(publicAuditFields(values).find((field) => field.key === "rowCount")?.value, "12");
 });

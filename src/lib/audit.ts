@@ -36,19 +36,27 @@ export const auditEntityLabels: Record<string, string> = {
 };
 
 const auditFieldLabels: Record<string, string> = {
+  action: "Akcia",
+  active: "Stav partnera",
   amount: "Suma s DPH",
   bronzeMonthlyTurnoverEur: "Hranica bronzového odznaku",
   code: "Kód",
   contactPerson: "Kontaktná osoba",
   displayName: "Zobrazované meno",
   email: "E-mail",
+  entityId: "ID záznamu",
+  entityType: "Typ záznamu",
+  filters: "Filtre exportu",
+  from: "Od",
   goldMonthlyTurnoverEur: "Hranica zlatého odznaku",
   ico: "IČO",
   internalNote: "Interná poznámka",
+  includeDeleted: "Vrátane zmazaných",
   isActive: "Aktívny",
   isDeleted: "Zmazaný",
   label: "Označenie",
   method: "Spôsob",
+  month: "Mesiac",
   name: "Meno",
   netAmount: "Suma bez DPH",
   note: "Poznámka",
@@ -57,12 +65,16 @@ const auditFieldLabels: Record<string, string> = {
   points: "Body",
   purchaseConfirmAboveEur: "Limit potvrdenia nákupu",
   purchasedAt: "Dátum nákupu",
+  q: "Vyhľadávanie",
   reason: "Dôvod",
   role: "Rola",
+  rowCount: "Počet riadkov",
   silverMonthlyTurnoverEur: "Hranica strieborného odznaku",
   slug: "Slug",
   tokenHint: "Nápoveda tokenu",
+  to: "Do",
   type: "Typ",
+  userId: "ID používateľa",
   vatRatePercent: "Sadzba DPH",
 };
 
@@ -135,6 +147,9 @@ export function publicAuditFields(value: unknown): AuditField[] {
     if (typeof fieldValue === "string" || typeof fieldValue === "number") {
       return [{ key, label: auditFieldLabels[key], value: String(fieldValue).slice(0, 255) }];
     }
+    if (key === "filters" && fieldValue && typeof fieldValue === "object" && !Array.isArray(fieldValue)) {
+      return [{ key, label: auditFieldLabels[key], value: JSON.stringify(publicAuditValues(fieldValue)) }];
+    }
     return [];
   });
 }
@@ -149,6 +164,9 @@ export function publicAuditValues(value: unknown): Record<string, string | numbe
       if (fieldValue === null || typeof fieldValue === "string" ||
           typeof fieldValue === "number" || typeof fieldValue === "boolean") {
         return [[key, fieldValue]];
+      }
+      if (key === "filters" && fieldValue && typeof fieldValue === "object" && !Array.isArray(fieldValue)) {
+        return [[key, JSON.stringify(publicAuditValues(fieldValue))]];
       }
       return [];
     }),
