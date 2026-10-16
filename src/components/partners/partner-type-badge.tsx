@@ -3,9 +3,9 @@ import { Building2, HardHat, Megaphone } from "lucide-react";
 export type PartnerTypeValue = "installer" | "company" | "referrer";
 
 const config = {
-  installer: { label: "Montážnik", Icon: HardHat, tone: "bg-amber-50 text-amber-800 ring-amber-200" },
-  company: { label: "Firma", Icon: Building2, tone: "bg-indigo-50 text-indigo-700 ring-indigo-200" },
-  referrer: { label: "Odporúčateľ", Icon: Megaphone, tone: "bg-teal-50 text-teal-700 ring-teal-200" },
+  installer: { label: "Montážnik", Icon: HardHat, tone: "bg-amber-50 text-white ring-amber-200" },
+  company: { label: "Firma", Icon: Building2, tone: "bg-indigo-50 text-white ring-indigo-200" },
+  referrer: { label: "Odporúčateľ", Icon: Megaphone, tone: "bg-teal-50 text-white ring-teal-200" },
 } as const;
 
 export function partnerTypeLabel(type: PartnerTypeValue) {

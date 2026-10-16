@@ -14,24 +14,24 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
     throw error;
   }
   return <section>
-    <h1 className="text-3xl font-semibold">{company.name}</h1>
-    <p className="mt-2 text-stone-600">{company.slug} · {company.isActive ? "Aktívna" : "Neaktívna"} · {company.counts.users} používateľov · {company.counts.partners} partnerov</p>
+    <h1 className="text-3xl font-bold text-white sm:text-4xl">{company.name}</h1>
+    <p className="mt-2 text-white/70">{company.slug} · {company.isActive ? "Aktívna" : "Neaktívna"} · {company.counts.users} používateľov · {company.counts.partners} partnerov</p>
     <CompanyControls companyId={company.id} isActive={company.isActive} />
-    <h2 className="mb-4 text-xl font-semibold">Údaje firmy</h2>
+    <h2 className="mb-4 text-2xl font-semibold text-white">Údaje firmy</h2>
     <CompanyForm company={{ id: company.id, name: company.name, ico: company.ico }} />
-    <h2 className="mb-2 mt-8 text-xl font-semibold">Nastavenia programu firmy</h2>
-    <p className="mb-4 max-w-2xl text-sm text-stone-600">
+    <h2 className="mb-2 mt-8 text-2xl font-semibold text-white">Nastavenia programu firmy</h2>
+    <p className="mb-4 max-w-2xl text-sm text-white/70">
       Tieto hodnoty nastavuje iba admin danej firmy v menu Nastavenia. Superadmin ich vidí len na čítanie.
     </p>
-    <dl className="grid max-w-xl gap-3 rounded-xl border border-stone-200 bg-white p-5 text-sm sm:grid-cols-2">
+    <dl className="data-surface grid max-w-xl gap-3 rounded-xl p-5 text-sm sm:grid-cols-2">
       <SettingValue label="Sadzba DPH" value={`${company.vatRatePercent} %`} />
       <SettingValue label="Potvrdenie nákupu od" value={money(company.purchaseConfirmAboveEur)} />
       <SettingValue label="Bronzový partner od (bez DPH)" value={money(company.bronzeMonthlyTurnoverEur)} />
       <SettingValue label="Strieborný partner od (bez DPH)" value={money(company.silverMonthlyTurnoverEur)} />
       <SettingValue label="Zlatý partner od (bez DPH)" value={money(company.goldMonthlyTurnoverEur)} />
     </dl>
-    <h2 className="mb-4 mt-8 text-xl font-semibold">Admini</h2>
-    <ul className="space-y-2">{company.admins.map((admin) => <li key={admin.id}>
+    <h2 className="mb-4 mt-8 text-2xl font-semibold text-white">Admini</h2>
+    <ul className="data-surface space-y-2 rounded-xl p-5">{company.admins.map((admin) => <li key={admin.id}>
       {admin.name} · {admin.email} · {admin.isActive ? "Aktívny" : "Neaktívny"}
       {admin.mustChangePassword ? " · Čaká na zmenu hesla" : ""}
     </li>)}</ul>

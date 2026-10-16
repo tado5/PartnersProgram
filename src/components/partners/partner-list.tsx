@@ -89,7 +89,7 @@ export function PartnerList({
     <div>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="mt-3 text-3xl font-semibold tracking-tight text-stone-950">
+          <h1 className="mt-3 text-3xl font-bold tracking-tight text-white sm:text-4xl">
             Správa partnerov
           </h1>
           <p className="mt-2 text-sm text-stone-600">
@@ -100,7 +100,7 @@ export function PartnerList({
           <div className="flex flex-wrap items-center gap-3">
             <CsvExportForm kind="partners" query={new URLSearchParams({ q: query.trim(), type, active, privacy }).toString()} />
             <Link
-              className="rounded-md bg-stone-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-stone-800"
+              className="min-h-11 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
               href="/app/partneri/novy"
             >
               Nový partner
@@ -110,7 +110,7 @@ export function PartnerList({
       </div>
 
       <form
-        className="mb-5 grid gap-3 rounded-xl border border-stone-200 bg-white p-4 sm:grid-cols-2 xl:grid-cols-[minmax(10rem,1fr)_auto_auto_auto_auto]"
+        className="glass-surface mb-5 grid gap-3 rounded-xl p-4 sm:grid-cols-2 xl:grid-cols-[minmax(10rem,1fr)_auto_auto_auto_auto]"
         onSubmit={submitSearch}
       >
         <label className="sr-only" htmlFor="partner-search">Vyhľadať partnera</label>
@@ -163,7 +163,7 @@ export function PartnerList({
       {error ? (
         <p aria-live="polite" className="mb-4 text-sm text-red-700">{error}</p>
       ) : null}
-      <section className="overflow-hidden rounded-xl border border-stone-200 bg-white">
+      <section aria-busy={pending} className="data-surface overflow-hidden rounded-xl">
         {items.length ? (
           <div className="divide-y divide-stone-200">
             {items.map((partner) => (

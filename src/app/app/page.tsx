@@ -40,23 +40,23 @@ async function AppHome({ searchParams }: { searchParams: HomeSearchParams }) {
     const purchases = result.items as PurchaseItem[];
     return (
       <section>
-        <p className="text-sm font-semibold uppercase tracking-[0.16em] text-amber-800">Pracovný priestor</p>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-stone-950">Dobrý deň, {context.user.name}.</h1>
-        <p className="mt-3 max-w-2xl leading-7 text-stone-600">Rýchlo zapíšte nákup partnera cez mobil alebo počítač.</p>
-        <div className="mt-6 flex flex-wrap gap-3">
-          <Link className="min-h-12 rounded-md bg-stone-950 px-5 py-3 text-sm font-semibold text-white" href="/app/sken">
+        <p className="text-xs font-semibold tracking-[0.14em] text-white/85">PRACOVNÝ PRIESTOR</p>
+        <h1 className="mt-3 text-3xl font-bold tracking-tight text-white sm:text-4xl">Dobrý deň, {context.user.name}.</h1>
+        <p className="mt-3 max-w-2xl leading-7 text-white/70">Rýchlo zapíšte nákup partnera cez mobil alebo počítač.</p>
+        <div role="group" aria-label="Časté úlohy" className="mt-6 flex flex-wrap gap-3">
+          <Link className="min-h-12 rounded-lg bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-[0_8px_24px_rgba(0,128,255,0.2)] hover:bg-primary/90" href="/app/sken">
             Skenovať partnera
           </Link>
-          <Link className="min-h-12 rounded-md border border-stone-300 bg-white px-5 py-3 text-sm font-semibold text-stone-700" href="/app/nakupy/manualne">
+          <Link className="min-h-12 rounded-lg border border-white/20 bg-white/5 px-5 py-3 text-sm font-semibold text-white hover:bg-white/10" href="/app/nakupy/manualne">
             Nákup bez karty
           </Link>
-          <Link className="min-h-12 rounded-md border border-stone-300 bg-white px-5 py-3 text-sm font-semibold text-stone-700" href="/app/nakupy">
+          <Link className="min-h-12 rounded-lg border border-white/20 bg-white/5 px-5 py-3 text-sm font-semibold text-white hover:bg-white/10" href="/app/nakupy">
             Všetky moje dnešné nákupy ({result.total})
           </Link>
         </div>
         <section className="mt-8">
-          <h2 className="text-xl font-semibold text-stone-950">Moje dnešné zápisy</h2>
-          <p className="mt-1 text-sm text-stone-600">Dnešok sa určuje podľa časového pásma {env.APP_TIMEZONE}.</p>
+          <h2 className="text-2xl font-semibold text-white">Moje dnešné zápisy</h2>
+          <p className="mt-1 text-sm text-white/65">Dnešok sa určuje podľa časového pásma {env.APP_TIMEZONE}.</p>
           <PurchaseHistory
             role="seller"
             items={purchases}
@@ -89,21 +89,21 @@ async function AppHome({ searchParams }: { searchParams: HomeSearchParams }) {
 
   return (
     <section>
-      <p className="text-sm font-semibold uppercase tracking-[0.16em] text-amber-800">Pracovný priestor</p>
-      <h1 className="mt-3 text-3xl font-semibold tracking-tight text-stone-950">Dobrý deň, {context.user.name}.</h1>
-      <p className="mt-3 max-w-2xl leading-7 text-stone-600">Mesačný prehľad firmy a posledné zapísané nákupy. Body aj odznaky sa počítajú zo sumy bez DPH.</p>
-      <div className="mt-6 flex flex-wrap gap-3">
-        <Link className="min-h-12 rounded-md bg-stone-950 px-5 py-3 text-sm font-semibold text-white" href="/app/sken">Skenovať partnera</Link>
-        <Link className="min-h-12 rounded-md border border-stone-300 bg-white px-5 py-3 text-sm font-semibold text-stone-700" href="/app/nakupy/manualne">Nákup bez karty</Link>
-        <Link className="min-h-12 rounded-md border border-stone-300 bg-white px-5 py-3 text-sm font-semibold text-stone-700" href="/app/partneri/novy">Nový partner</Link>
-        <Link className="min-h-12 rounded-md border border-stone-300 bg-white px-5 py-3 text-sm font-semibold text-stone-700" href={`/app/reporty?${periodQuery}`}>Mesačný report</Link>
+      <p className="text-xs font-semibold tracking-[0.14em] text-white/85">PRACOVNÝ PRIESTOR</p>
+      <h1 className="mt-3 text-3xl font-bold tracking-tight text-white sm:text-4xl">Dobrý deň, {context.user.name}.</h1>
+      <p className="mt-3 max-w-2xl leading-7 text-white/70">Mesačný prehľad firmy a posledné zapísané nákupy. Body aj odznaky sa počítajú zo sumy bez DPH.</p>
+      <div role="group" aria-label="Časté úlohy" className="mt-6 flex flex-wrap gap-3">
+        <Link className="min-h-12 rounded-lg bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-[0_8px_24px_rgba(0,128,255,0.2)] hover:bg-primary/90" href="/app/sken">Skenovať partnera</Link>
+        <Link className="min-h-12 rounded-lg border border-white/20 bg-white/5 px-5 py-3 text-sm font-semibold text-white hover:bg-white/10" href="/app/nakupy/manualne">Nákup bez karty</Link>
+        <Link className="min-h-12 rounded-lg border border-white/20 bg-white/5 px-5 py-3 text-sm font-semibold text-white hover:bg-white/10" href="/app/partneri/novy">Nový partner</Link>
+        <Link className="min-h-12 rounded-lg border border-white/20 bg-white/5 px-5 py-3 text-sm font-semibold text-white hover:bg-white/10" href={`/app/reporty?${periodQuery}`}>Mesačný report</Link>
       </div>
 
       <div className="mt-8">
         <PeriodPicker period={period} currentMonth={currentMonth} />
       </div>
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div role="group" aria-label="Súhrn obdobia" className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <Metric label="Obrat bez DPH" value={`${report.summary.netAmount} €`} />
         <Metric label="Tržba s DPH" value={`${report.summary.grossAmount} €`} />
         <Metric label={period.month ? "Body za mesiac" : "Body za obdobie"} value={report.summary.points.toLocaleString("sk-SK")} />
@@ -116,10 +116,10 @@ async function AppHome({ searchParams }: { searchParams: HomeSearchParams }) {
       <section className="mt-8">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h2 className="text-xl font-semibold text-stone-950">Posledné nákupy · {label}</h2>
-            <p className="mt-1 text-sm text-stone-600">Zobrazuje sa najviac 10 nákupov z vybraného obdobia.</p>
+            <h2 className="text-2xl font-semibold text-white">Posledné nákupy · {label}</h2>
+            <p className="mt-1 text-sm text-white/65">Zobrazuje sa najviac 10 nákupov z vybraného obdobia.</p>
           </div>
-          <Link className="text-sm font-medium text-amber-800 underline" href={`/app/nakupy?from=${period.from}&to=${period.to}`}>
+          <Link className="text-sm font-medium text-primary underline decoration-primary/50 underline-offset-4 hover:text-white" href={`/app/nakupy?from=${period.from}&to=${period.to}`}>
             Otvoriť históriu nákupov
           </Link>
         </div>
@@ -131,9 +131,9 @@ async function AppHome({ searchParams }: { searchParams: HomeSearchParams }) {
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-stone-200 bg-white p-4">
-      <p className="text-sm text-stone-600">{label}</p>
-      <p className="mt-2 text-2xl font-semibold tracking-tight text-stone-950">{value}</p>
+    <div className="glass-surface min-w-0 rounded-xl p-4">
+      <p className="text-sm text-white/70">{label}</p>
+      <p className="financial-value mt-2 break-words text-2xl font-semibold tracking-tight text-white">{value}</p>
     </div>
   );
 }

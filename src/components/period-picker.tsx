@@ -35,8 +35,8 @@ export function PeriodPicker({
   const canGoNext = nextMonth <= currentMonth;
 
   return (
-    <div className="rounded-xl border border-stone-200 bg-white p-4">
-      <p className="text-sm font-medium text-stone-700">Obdobie</p>
+    <div className="glass-surface rounded-xl p-4 sm:p-5">
+      <p className="text-sm font-semibold text-white">Obdobie</p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-1">
           <Link aria-label={`Predchádzajúci mesiac (${monthLabel(previousMonth)})`} href={monthHref(previousMonth)}

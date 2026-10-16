@@ -92,7 +92,7 @@ export function PurchaseForm({
 
   if (success) {
     return (
-      <section className="rounded-xl border border-emerald-200 bg-emerald-50 p-6">
+      <section className="glass-surface rounded-xl border border-emerald-200 bg-emerald-50 p-6">
         <h2 className="text-xl font-semibold text-emerald-950">Nákup bol uložený</h2>
         <p className="mt-2 text-sm text-emerald-900">
           {success.amount} € s DPH · {success.netAmount} € bez DPH · <strong className="text-base font-bold">{success.points} bodov</strong> · {formatDate(success.purchasedAt)}
@@ -114,7 +114,7 @@ export function PurchaseForm({
   const preview = validAmount ? netAmountFromGross(amount.replace(",", "."), vatRatePercent) : null;
   const pointsPreview = preview ? pointsForAmount(preview.netAmount) : null;
   return (
-    <form onSubmit={submit} className="rounded-xl border border-stone-200 bg-white p-5 sm:p-6">
+    <form aria-busy={pending} onSubmit={submit} className="data-surface rounded-xl p-5 sm:p-6">
       <div className="grid gap-5 sm:grid-cols-2">
         <label className="block text-sm font-medium text-stone-700">
           Suma nákupu s DPH (€)
@@ -160,8 +160,8 @@ export function PurchaseForm({
         </label>
       </div>
       {pointsPreview !== null && Number.isFinite(pointsPreview) ? (
-        <p className="mt-5 rounded-md bg-stone-50 px-4 py-3 text-sm">
-          Bez DPH: <strong>{preview?.netAmount} €</strong> · DPH: {preview?.vatAmount} € · pripočíta sa <strong className="text-base font-bold">{pointsPreview} bodov</strong> zo sumy bez DPH
+        <p className="mt-5 rounded-md border border-white/12 bg-white/5 px-4 py-3 text-sm">
+          Bez DPH: <strong className="financial-value">{preview?.netAmount} €</strong> · DPH: <span className="financial-value">{preview?.vatAmount} €</span> · pripočíta sa <strong className="financial-value text-base font-bold">{pointsPreview} bodov</strong> zo sumy bez DPH
           {confirmationLimit ? ` · suma od ${confirmationLimit} € vyžaduje dodatočné potvrdenie` : ""}
         </p>
       ) : null}

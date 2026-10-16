@@ -97,7 +97,7 @@ export function CompanyControls({ companyId, isActive }: { companyId: string; is
   }
   return <div className="my-6 space-y-4">
     <button className={buttonClass} disabled={pending} onClick={() => void perform("select")}>
-      Otvoriť program firmy
+      {pending ? "Otváram program firmy…" : "Otvoriť program firmy"}
     </button>
     <div className="flex flex-wrap gap-3">
       {isActive ? <input className="rounded-md border px-3 py-2" aria-label="Dôvod deaktivácie"
@@ -118,7 +118,7 @@ export function ClearCompanyContext() {
       const response = await fetch("/api/superadmin/company-context", { method: "DELETE" });
       if (!response.ok) { setError("Kontext sa nepodarilo ukončiť."); return; }
       try { localStorage.setItem("company-context-change", crypto.randomUUID()); } catch {}
-      window.location.replace("/superadmin/firmy");
+      window.location.reload();
     } catch { setError("Požiadavku sa nepodarilo dokončiť."); }
   }
   return <><button className="text-sm underline" onClick={() => void clear()}>Ukončiť firemný kontext</button>

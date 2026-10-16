@@ -27,7 +27,7 @@ export async function POST(request: Request) {
     httpOnly: true, sameSite: "lax", secure: env.NODE_ENV === "production", path: "/",
   });
   return NextResponse.json({ company: { id: company.id.toString(), name: company.name } }, {
-    headers: { "Cache-Control": "no-store", "Clear-Site-Data": '"cache"' },
+    headers: { "Cache-Control": "no-store" },
   });
 }
 
@@ -35,6 +35,9 @@ export async function DELETE(request: Request) {
   const context = await requireRole(["superadmin"]);
   if (!isAuthContext(context)) return context;
   if (!hasSameOrigin(request)) return contextError("INVALID_ORIGIN", "Neplatný pôvod požiadavky.", 403);
-  (await cookies()).delete(companyCookieName);
+  (await cookies()).set(companyCookieName, "", {
+    httpOnly: true, sameSite: "lax", secure: env.NODE_ENV === "production",
+    path: "/", maxAge: 0,
+  });
   return NextResponse.json({ cleared: true }, { headers: { "Cache-Control": "no-store" } });
 }

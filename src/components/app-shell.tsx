@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   BarChart3, Building2, ClipboardList, FileDown, KeyRound, LayoutDashboard, LogOut, Menu, PanelLeftClose,
   PanelLeftOpen, ScanLine, Search, Settings, ShoppingCart, UserCog, Users, X,
@@ -61,6 +61,11 @@ export function AppShell({
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const mobileMenuRef = useRef<HTMLElement>(null);
+  const mobileTriggerRef = useRef<HTMLButtonElement>(null);
+  const currentItem = items
+    .filter((item) => pathname === item.href || pathname.startsWith(`${item.href}/`))
+    .sort((a, b) => b.href.length - a.href.length)[0];
 
   useEffect(() => {
     try {
@@ -72,13 +77,42 @@ export function AppShell({
 
   useEffect(() => {
     if (!mobileOpen) return;
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setMobileOpen(false); };
+    const previouslyFocused = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    const trigger = mobileTriggerRef.current;
+    const firstFocusable = mobileMenuRef.current?.querySelector<HTMLElement>(
+      'a[href], button:not([disabled])',
+    );
+    firstFocusable?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMobileOpen(false);
+        return;
+      }
+      if (event.key !== "Tab" || !mobileMenuRef.current) return;
+      const focusable = Array.from(
+        mobileMenuRef.current.querySelectorAll<HTMLElement>('a[href], button:not([disabled])'),
+      );
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     window.addEventListener("keydown", onKey);
     return () => {
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", onKey);
+      if (previouslyFocused?.isConnected) previouslyFocused.focus();
+      else trigger?.focus();
     };
   }, [mobileOpen]);
 
@@ -110,13 +144,13 @@ export function AppShell({
             "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition",
             compact ? "justify-center px-2" : "",
             active
-              ? "bg-amber-100 text-amber-950"
+              ? "border-l-2 border-primary bg-primary/15 text-white"
               : item.highlight
-                ? "text-amber-800 hover:bg-amber-50 hover:text-amber-950"
-                : "text-stone-600 hover:bg-stone-100 hover:text-stone-950",
+                ? "text-white hover:bg-white/10 hover:text-white"
+                : "text-white/75 hover:bg-white/10 hover:text-white",
           ].join(" ");
           const content = <>
-            <Icon aria-hidden className="size-5 shrink-0" />
+            <Icon aria-hidden className={`size-5 shrink-0 ${active || item.highlight ? "text-primary" : ""}`} />
             <span className={compact ? "sr-only" : "truncate"}>{item.label}</span>
           </>;
           return item.document ? (
@@ -143,6 +177,7 @@ export function AppShell({
         )}
         {footerExtra && !compact ? <div className="px-3">{footerExtra}</div> : null}
         <button
+          ref={mobileTriggerRef}
           type="button"
           onClick={() => signOut({ redirectTo: "/login" })}
           title={compact ? "Odhlásiť" : undefined}
@@ -156,12 +191,12 @@ export function AppShell({
   }
 
   return (
-    <div className="min-h-screen bg-stone-50">
+    <div className="min-h-[100dvh]">
       {/* Desktop sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-30 hidden flex-col border-r border-stone-200 bg-white transition-[width] duration-200 lg:flex ${collapsed ? "w-[4.5rem]" : "w-64"}`}
+        className={`glass-surface fixed inset-y-0 left-0 z-30 hidden flex-col border-r border-white/15 transition-[width] duration-200 lg:flex ${collapsed ? "w-[4.5rem]" : "w-64"}`}
       >
-        <div className={`flex h-16 items-center border-b border-stone-200 px-4 ${collapsed ? "justify-center" : "justify-between"}`}>
+        <div className={`flex h-16 items-center border-b border-white/15 px-4 ${collapsed ? "justify-center" : "justify-between"}`}>
           {collapsed ? null : <Link href={brandHref}>{brand}</Link>}
           <button
             type="button"
@@ -178,14 +213,14 @@ export function AppShell({
       </aside>
 
       {/* Mobile top bar */}
-      <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-stone-200 bg-white px-4 lg:hidden">
+      <header className="glass-surface sticky top-0 z-[100] flex h-14 items-center gap-3 border-b border-white/15 px-4 lg:hidden">
         <button
           type="button"
           onClick={() => setMobileOpen(true)}
           aria-label="Otvoriť menu"
           aria-expanded={mobileOpen}
           aria-controls="mobile-menu"
-          className="-ml-2 rounded-md p-2 text-stone-700 hover:bg-stone-100"
+          className="-ml-2 rounded-md p-2 text-stone-700 hover:bg-white/10"
         >
           <Menu className="size-6" />
         </button>
@@ -194,15 +229,15 @@ export function AppShell({
 
       {/* Mobile drawer */}
       {mobileOpen ? (
-        <div className="fixed inset-0 z-40 lg:hidden" role="dialog" aria-modal="true" id="mobile-menu">
+        <div className="fixed inset-0 z-[var(--z-overlay)] lg:hidden" role="dialog" aria-modal="true" aria-label="Menu navigácie" id="mobile-menu">
           <button
             type="button"
             aria-label="Zavrieť menu"
             className="absolute inset-0 bg-stone-950/50"
             onClick={() => setMobileOpen(false)}
           />
-          <aside className="relative flex h-full w-72 max-w-[85vw] flex-col bg-white shadow-xl">
-            <div className="flex h-14 items-center justify-between border-b border-stone-200 px-4">
+          <aside ref={mobileMenuRef} className="glass-surface relative flex h-full w-72 max-w-[85vw] flex-col border-r border-white/15">
+            <div className="flex h-14 items-center justify-between border-b border-white/15 px-4">
               <Link href={brandHref}>{brand}</Link>
               <button
                 type="button"
@@ -221,7 +256,31 @@ export function AppShell({
 
       <div className={`transition-[padding] duration-200 ${collapsed ? "lg:pl-[4.5rem]" : "lg:pl-64"}`}>
         {banner}
-        <main className="mx-auto max-w-6xl px-4 py-6 sm:px-8 sm:py-8">{children}</main>
+        <div className="glass-surface sticky top-0 z-[100] hidden h-16 items-center justify-between border-x-0 border-t-0 px-6 lg:flex">
+          <nav aria-label="Drobečková navigácia" className="flex min-w-0 items-center gap-2 text-sm">
+            <Link href={brandHref} className="shrink-0 text-white/65 transition hover:text-white">
+              {brandSuffix ?? "Pracovný priestor"}
+            </Link>
+            {currentItem && currentItem.href !== brandHref ? (
+              <>
+                <span aria-hidden="true" className="text-white/40">/</span>
+                <span aria-current="page" className="truncate font-medium text-white">
+                  {currentItem.label}
+                </span>
+              </>
+            ) : null}
+          </nav>
+          <div className="ml-6 flex min-w-0 items-center gap-3 text-right">
+            <span aria-hidden="true" className="flex size-9 shrink-0 items-center justify-center rounded-full border border-white/20 bg-white/10 text-sm font-semibold text-white">
+              {userName.trim().slice(0, 1).toLocaleUpperCase()}
+            </span>
+            <span className="min-w-0">
+              <span className="block max-w-48 truncate text-sm font-semibold text-white">{userName}</span>
+              <span className="block text-xs text-white/65">{userRole}</span>
+            </span>
+          </div>
+        </div>
+        <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8">{children}</main>
       </div>
     </div>
   );

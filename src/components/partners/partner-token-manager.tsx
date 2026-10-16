@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useCompanyApi } from "@/components/company-context";
 
 type Token = {
@@ -44,7 +44,57 @@ export function PartnerTokenManager({
   const [issued, setIssued] = useState<IssuedToken | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const issuedDialogRef = useRef<HTMLDivElement>(null);
+  const issuedCloseRef = useRef<HTMLButtonElement>(null);
+  const issuedTriggerRef = useRef<HTMLElement | null>(null);
+  const issuedFocusFallbackRef = useRef<HTMLButtonElement>(null);
   const activeOfType = tokens.filter((token) => token.isActive && token.type === type);
+
+  useEffect(() => {
+    if (!issued) return;
+
+    const previouslyFocused = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    const focusFallback = issuedFocusFallbackRef.current;
+    issuedCloseRef.current?.focus();
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setIssued(null);
+        return;
+      }
+      if (event.key !== "Tab" || !issuedDialogRef.current) return;
+
+      const focusable = issuedDialogRef.current.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+      const first = focusable.item(0);
+      const last = focusable.item(focusable.length - 1);
+      if (!first || !last) {
+        event.preventDefault();
+        issuedDialogRef.current.focus();
+      } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      const trigger = issuedTriggerRef.current ?? previouslyFocused;
+      if (trigger instanceof HTMLButtonElement && trigger.disabled) {
+        focusFallback?.focus();
+      } else {
+        trigger?.focus();
+      }
+    };
+  }, [issued]);
 
   async function refreshTokens() {
     const response = await companyFetch(`/api/partners/${partnerId}/tokens`, {
@@ -167,6 +217,7 @@ export function PartnerTokenManager({
         </div>
         <div className="flex gap-2">
           <button
+            ref={type === "qr" ? issuedFocusFallbackRef : undefined}
             className={`rounded-md px-3 py-2 text-sm font-medium ${type === "qr" ? "bg-stone-950 text-white" : "border border-stone-300 text-stone-700"}`}
             onClick={() => setType("qr")}
             type="button"
@@ -174,6 +225,7 @@ export function PartnerTokenManager({
             Nový QR
           </button>
           <button
+            ref={type === "nfc" ? issuedFocusFallbackRef : undefined}
             className={`rounded-md px-3 py-2 text-sm font-medium ${type === "nfc" ? "bg-stone-950 text-white" : "border border-stone-300 text-stone-700"}`}
             onClick={() => setType("nfc")}
             type="button"
@@ -220,7 +272,10 @@ export function PartnerTokenManager({
           <button
             className="rounded-md bg-amber-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-amber-900 disabled:opacity-50"
             disabled={pending || (replaceExisting && activeOfType.length > 0 && !reason.trim())}
-            onClick={() => void createToken()}
+            onClick={(event) => {
+              issuedTriggerRef.current = event.currentTarget;
+              void createToken();
+            }}
             type="button"
           >
             Vygenerovať {type === "qr" ? "QR" : "NFC"}
@@ -261,9 +316,12 @@ export function PartnerTokenManager({
       {issued ? (
         <div
           aria-labelledby="issued-token-title"
+          aria-describedby="issued-token-description"
           aria-modal="true"
           className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-stone-950/60 p-4"
           role="dialog"
+          ref={issuedDialogRef}
+          tabIndex={-1}
         >
           <div className="my-auto w-full max-w-lg rounded-xl bg-white p-6 shadow-xl">
             <div className="flex items-start justify-between gap-4">
@@ -271,7 +329,7 @@ export function PartnerTokenManager({
                 <h2 className="text-xl font-semibold text-stone-950" id="issued-token-title">
                   Token je vytvorený
                 </h2>
-                <p className="mt-1 text-sm text-stone-600">
+                <p className="mt-1 text-sm text-stone-600" id="issued-token-description">
                   Po zatvorení sa QR nedá znova zobraziť.
                 </p>
               </div>
@@ -279,6 +337,7 @@ export function PartnerTokenManager({
                 aria-label="Zavrieť"
                 className="rounded-md px-2 py-1 text-stone-600 hover:bg-stone-100"
                 onClick={closeIssuedDialog}
+                ref={issuedCloseRef}
                 type="button"
               >
                 ✕

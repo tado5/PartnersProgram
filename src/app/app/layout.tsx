@@ -57,14 +57,17 @@ export default async function AppLayout({
       items={items}
       userName={context.user.name}
       userRole={roleLabels[context.user.role]}
-      banner={
-        <div className="border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-center text-sm sm:px-8">
-          Firma: <strong>{context.company.name}</strong>
-          {!context.company.isActive ? " · Program pozastavený" : ""}
-          {context.user.role === "superadmin" ? (
-            <> · Superadmin · <DocumentLink href="/superadmin/firmy" className="underline">Späť na firmy / zmeniť firmu</DocumentLink></>
+      footerExtra={
+        <>
+          {!context.company.isActive ? (
+            <p className="mb-2 text-xs text-amber-700">Program firmy je pozastavený.</p>
           ) : null}
-        </div>
+          {context.user.role === "superadmin" ? (
+            <DocumentLink href="/superadmin/firmy" className="text-sm underline">
+              Späť na firmy / zmeniť firmu
+            </DocumentLink>
+          ) : null}
+        </>
       }
     >
       {children}

@@ -98,7 +98,7 @@ export function PartnerForm({
   }
 
   return (
-    <form className="space-y-5 rounded-xl border border-stone-200 bg-white p-5 sm:p-7" onSubmit={submit}>
+    <form className="data-surface space-y-5 rounded-xl p-5 sm:p-7" onSubmit={submit}>
       {partner ? (
         <div className="rounded-md bg-stone-50 px-4 py-3 text-sm text-stone-700">
           Kód partnera: <strong>{partner.code}</strong> (nemeniteľný)

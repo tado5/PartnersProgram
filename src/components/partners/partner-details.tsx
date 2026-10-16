@@ -63,15 +63,15 @@ export function PartnerDetails({ partner }: { partner: Partner }) {
   return (
     <section>
       <div className="mb-6">
-        <Link className="text-sm font-medium text-amber-800 hover:text-amber-950" href="/app/partneri">
+        <Link className="text-sm font-medium text-white/90 underline decoration-primary/50 underline-offset-4 hover:text-white" href="/app/partneri">
           ← Späť na partnerov
         </Link>
         <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.16em] text-amber-800">
+            <p className="text-xs font-semibold tracking-[0.14em] text-white/85">
               {partner.code} · {typeLabels[partner.type]}
             </p>
-            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-stone-950">
+            <h1 className="mt-2 text-3xl font-bold tracking-tight text-white sm:text-4xl">
               {partner.displayName}
             </h1>
             <span
@@ -85,7 +85,7 @@ export function PartnerDetails({ partner }: { partner: Partner }) {
             </span>
           </div>
           <Link
-            className="rounded-md border border-stone-300 px-4 py-2.5 text-sm font-medium text-stone-700 hover:bg-stone-100"
+            className="min-h-11 rounded-lg border border-white/20 bg-white/5 px-4 py-2.5 text-sm font-medium text-white hover:bg-white/10"
             href={`/app/partneri/${partner.id}/upravit`}
           >
             Upraviť údaje
@@ -94,8 +94,8 @@ export function PartnerDetails({ partner }: { partner: Partner }) {
       </div>
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
-        <section className="rounded-xl border border-stone-200 bg-white p-5">
-          <h2 className="text-lg font-semibold text-stone-950">Kontaktné údaje</h2>
+        <section className="data-surface rounded-xl p-5">
+          <h2 className="text-xl font-semibold text-white">Kontaktné údaje</h2>
           <dl className="mt-4 grid gap-4 sm:grid-cols-2">
             <Detail label="Telefón" value={partner.phone} />
             <Detail label="E-mail" value={partner.email} />
@@ -113,8 +113,8 @@ export function PartnerDetails({ partner }: { partner: Partner }) {
           </p>
         </section>
 
-        <aside className="h-fit rounded-xl border border-stone-200 bg-white p-5">
-          <h2 className="text-lg font-semibold text-stone-950">Stav partnera</h2>
+        <aside className="glass-surface h-fit rounded-xl p-5">
+          <h2 className="text-xl font-semibold text-white">Stav partnera</h2>
           <p className="mt-2 text-sm leading-6 text-stone-600">
             {partner.isActive
               ? "Deaktivovaný partner sa nezobrazí predavačom a jeho karta nebude použiteľná."
@@ -134,7 +134,7 @@ export function PartnerDetails({ partner }: { partner: Partner }) {
                 />
               </label>
               <button
-                className="w-full rounded-md border border-red-300 px-4 py-2.5 text-sm font-semibold text-red-800 hover:bg-red-50 disabled:opacity-50"
+                className="w-full rounded-lg border border-[color:var(--color-pink)]/45 bg-[color:var(--color-pink)]/10 px-4 py-2.5 text-sm font-semibold text-white hover:bg-[color:var(--color-pink)]/20 disabled:opacity-50"
                 disabled={pending || !reason.trim()}
                 onClick={() => void changeStatus("deactivate")}
                 type="button"
@@ -144,7 +144,7 @@ export function PartnerDetails({ partner }: { partner: Partner }) {
             </div>
           ) : (
             <button
-              className="mt-4 w-full rounded-md bg-stone-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-stone-800 disabled:opacity-50"
+              className="mt-4 w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
               disabled={pending}
               onClick={() => void changeStatus("activate")}
               type="button"

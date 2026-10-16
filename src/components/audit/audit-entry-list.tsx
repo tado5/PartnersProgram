@@ -21,11 +21,11 @@ export type AuditEntryItem = {
 
 export function AuditEntryList({ items }: { items: AuditEntryItem[] }) {
   if (!items.length) {
-    return <p className="rounded-xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-600">Zatiaľ tu nie sú žiadne auditované udalosti.</p>;
+    return <p className="glass-surface rounded-xl px-4 py-3 text-sm text-white/75">Zatiaľ tu nie sú žiadne auditované udalosti.</p>;
   }
 
   return (
-    <ol className="divide-y divide-stone-200 overflow-hidden rounded-xl border border-stone-200 bg-white">
+    <ol aria-label="Záznamy auditu" className="data-surface divide-y divide-stone-200 overflow-hidden rounded-xl">
       {items.map((item) => {
         const oldFields = publicAuditFields(item.oldValues);
         const newFields = publicAuditFields(item.newValues);
@@ -70,7 +70,7 @@ export function AuditEntryList({ items }: { items: AuditEntryItem[] }) {
 
 function AuditValues({ title, fields }: { title: string; fields: ReturnType<typeof publicAuditFields> }) {
   return (
-    <section className="min-w-0 rounded-lg bg-stone-50 p-3">
+    <section className="min-w-0 rounded-lg border border-white/10 bg-white/5 p-3">
       <h4 className="text-xs font-semibold uppercase tracking-wide text-stone-500">{title}</h4>
       {fields.length ? (
         <dl className="mt-2 space-y-1 text-xs">

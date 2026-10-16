@@ -35,7 +35,7 @@ export function ChangePasswordForm() {
   }
 
   return (
-    <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
+    <form aria-busy={isSubmitting} className="mt-8 space-y-5" onSubmit={handleSubmit}>
       <label className="block text-sm font-medium text-stone-700">
         Súčasné heslo
         <input
@@ -58,12 +58,13 @@ export function ChangePasswordForm() {
         />
       </label>
       {error ? (
-        <p aria-live="polite" className="text-sm text-red-700">
+        <p role="alert" className="text-sm text-red-700">
           {error}
         </p>
       ) : null}
       <button
-        className="w-full rounded-md bg-stone-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-60"
+        aria-busy={isSubmitting}
+        className="w-full rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
         disabled={isSubmitting}
         type="submit"
       >

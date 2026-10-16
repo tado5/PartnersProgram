@@ -31,7 +31,7 @@ export default async function SuperadminAuditPage({ searchParams }: {
     !Number.isInteger(page) || page < 1 || page > 10_000
   ) {
     return <section>
-      <h1 className="text-3xl font-semibold">Platformový audit</h1>
+      <h1 className="text-3xl font-bold text-white sm:text-4xl">Platformový audit</h1>
       <p role="alert" className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">Filtre auditu nie sú platné.</p>
     </section>;
   }
@@ -72,9 +72,9 @@ export default async function SuperadminAuditPage({ searchParams }: {
 
   return (
     <section>
-      <h1 className="text-3xl font-semibold tracking-tight text-stone-950">Platformový audit</h1>
-      <p className="mt-1 text-xs leading-5 text-stone-600">Prezeranie platformových udalostí a auditovaných zásahov superadmina v konkrétnej firme.</p>
-      <form className="my-4 grid gap-x-3 gap-y-2 rounded-xl border border-stone-200 bg-white p-3 sm:grid-cols-2 lg:grid-cols-4 [&_label]:min-w-0 [&_label]:text-xs [&_input]:min-w-0 [&_input]:min-h-10 [&_input]:py-1.5 [&_input]:text-sm [&_select]:min-w-0 [&_select]:min-h-10 [&_select]:py-1.5 [&_select]:text-sm">
+      <h1 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">Platformový audit</h1>
+      <p className="mt-1 text-sm leading-6 text-white/70">Prezeranie platformových udalostí a auditovaných zásahov superadmina v konkrétnej firme.</p>
+      <form className="glass-surface my-4 grid gap-x-3 gap-y-2 rounded-xl p-3 sm:grid-cols-2 lg:grid-cols-4 [&_label]:min-w-0 [&_label]:text-xs [&_input]:min-w-0 [&_input]:min-h-10 [&_input]:py-1.5 [&_input]:text-sm [&_select]:min-w-0 [&_select]:min-h-10 [&_select]:py-1.5 [&_select]:text-sm">
         <label className="text-sm font-medium text-stone-700">
           Rozsah
           <select className="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2" name="companyId" defaultValue={companyInput}>
@@ -96,7 +96,7 @@ export default async function SuperadminAuditPage({ searchParams }: {
       </form>
 
       <p className="mb-2 text-xs text-stone-600">Záznamy {total ? `${(page - 1) * AUDIT_PAGE_SIZE + 1}–${Math.min(page * AUDIT_PAGE_SIZE, total)} z ${total}` : "0"} · strana {page} z {pageCount}</p>
-      <ol className="divide-y divide-stone-200 overflow-hidden rounded-xl border border-stone-200 bg-white">
+      <ol aria-label="Platformové záznamy auditu" className="data-surface divide-y divide-stone-200 overflow-hidden rounded-xl">
         {entries.map((entry) => (
           <li key={entry.id.toString()} className="px-3 py-3 sm:px-4">
             <div className="flex flex-wrap justify-between gap-x-4 gap-y-1">

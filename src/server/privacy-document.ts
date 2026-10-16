@@ -37,13 +37,27 @@ export function privacyDocumentHtml(document: PrivacyDocument, downloadUrl: stri
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex, nofollow"><title>Ochrana osobných údajov</title>
     <style>
-      * { box-sizing: border-box; } body { margin: 0; background: #fafaf9; color: #1c1917; font: 16px/1.6 system-ui,sans-serif; }
-      main { max-width: 52rem; margin: 2rem auto; padding: 1.5rem; background: white; overflow-wrap: anywhere; }
-      h1 { font-size: clamp(1.5rem,6vw,2rem); } dt { font-weight: bold; margin-top: .75rem; }
-      dd { margin-left: 0; } .body { white-space: pre-wrap; border-top: 1px solid #ddd; margin-top: 1.5rem; padding-top: 1.5rem; }
-      .note { font-size: .875rem; color: #57534e; } .warning { background: #fffbeb; padding: 1rem; }
-      a { color: #92400e; } .download { display: inline-block; padding: .65rem 1rem; border: 1px solid #92400e; border-radius: .4rem; }
-      @media print { main { margin: 0; max-width: none; } .download { display: none; } }
+      * { box-sizing: border-box; }
+      :root { color-scheme: dark; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #fff; background: #000; }
+      body { min-height: 100dvh; margin: 0; padding: 1rem; background: radial-gradient(ellipse at 12% 8%, rgba(0,128,255,.25), transparent 38rem), radial-gradient(ellipse at 88% 18%, rgba(139,0,255,.2), transparent 36rem), radial-gradient(ellipse at 72% 82%, rgba(255,20,147,.14), transparent 38rem), radial-gradient(ellipse at 16% 86%, rgba(32,178,170,.14), transparent 34rem), #000; font-size: 16px; line-height: 1.6; }
+      main { max-width: 52rem; margin: 1rem auto; padding: clamp(1rem, 4vw, 2rem); border: 1px solid rgba(255,255,255,.12); border-radius: 1rem; background: rgba(0,0,0,.78); overflow-wrap: anywhere; }
+      h1 { font-size: clamp(1.5rem,6vw,2.25rem); line-height: 1.2; } h2 { font-size: 1.25rem; }
+      dt { font-weight: bold; margin-top: .75rem; }
+      dd { margin-left: 0; }
+      .body { white-space: pre-wrap; border-top: 1px solid rgba(255,255,255,.2); margin-top: 1.5rem; padding-top: 1.5rem; }
+      .note { font-size: .875rem; color: rgba(255,255,255,.75); }
+      .warning { border: 1px solid rgba(0,128,255,.55); border-radius: .75rem; background: rgba(0,128,255,.12); padding: 1rem; }
+      a { color: #0080ff; } a:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+      .download { display: inline-block; padding: .65rem 1rem; border: 1px solid rgba(255,255,255,.2); border-radius: .5rem; background: #0080ff; color: #000; font-weight: 600; text-decoration: none; }
+      @supports not (backdrop-filter: blur(15px)) { main { background: rgba(0,0,0,.9); } }
+      @media (prefers-reduced-transparency: reduce) { main { background: rgba(0,0,0,.9); } }
+      @media print {
+        :root { color-scheme: light; color: #000; background: #fff; }
+        body { min-height: 0; padding: 0; background: #fff; color: #000; }
+        main { max-width: none; margin: 0; padding: 0; border: 0; border-radius: 0; background: #fff; color: #000; }
+        .note { color: #333; } .warning { border-color: #777; background: #fff; }
+        a { color: #000; } .download { display: none; }
+      }
     </style></head><body><main>
     <h1>Ochrana osobných údajov</h1>
     <p>${escapeHtml(document.companyName)} · ${escapeHtml(document.versionLabel)}</p>

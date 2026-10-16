@@ -84,7 +84,7 @@ export function PurchaseHistory({
     <Pagination page={page} pageCount={pageCount} hrefFor={pageHref} />
   ) : null;
   return (
-    <section className="mt-6 overflow-hidden rounded-xl border border-stone-200 bg-white">
+    <section aria-label="História nákupov" className="data-surface mt-6 overflow-hidden rounded-xl">
       {role !== "seller" ? (
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-200 p-4">
           <p className="text-sm text-stone-600">
@@ -115,10 +115,10 @@ export function PurchaseHistory({
                     ) : <strong className="text-stone-950">{purchase.partner.displayName}</strong>}
                     <p className="text-xs text-stone-500">{purchase.partner.code} · {formatDate(purchase.purchasedAt)}</p>
                   </div>
-                  <strong className="whitespace-nowrap text-stone-950">{purchase.netAmount} € bez DPH</strong>
+                  <strong className="financial-value whitespace-nowrap text-stone-950">{purchase.netAmount} € bez DPH</strong>
                 </div>
                 <p className="mt-3 text-sm text-stone-600">
-                  {purchase.amount} € s DPH · <strong className="text-base font-bold text-stone-950">{purchase.points} bodov</strong> · DPH {purchase.vatRatePercent} %
+                  <span className="financial-value">{purchase.amount} €</span> s DPH · <strong className="financial-value text-base font-bold text-stone-950">{purchase.points} bodov</strong> · DPH {purchase.vatRatePercent} %
                 </p>
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   <AuthorBadge name={purchase.createdBy.name} />
@@ -128,7 +128,7 @@ export function PurchaseHistory({
             ))}
           </ul>
           <div className="hidden overflow-x-auto md:block">
-          <table className="w-full text-left text-sm">
+          <table className="w-full min-w-[56rem] text-left text-sm">
             <thead className="bg-stone-50 text-xs uppercase tracking-wide text-stone-500">
               <tr>
                 <th className="px-4 py-3">Dátum</th>
@@ -142,7 +142,7 @@ export function PurchaseHistory({
             </thead>
             <tbody className="divide-y divide-stone-100">
               {items.map((purchase) => (
-                <tr key={purchase.id} className={purchase.isDeleted ? "text-stone-400" : ""}>
+                <tr key={purchase.id} className={`transition-colors hover:bg-white/[0.04] ${purchase.isDeleted ? "text-stone-400" : ""}`}>
                   <td className="px-4 py-3">{formatDate(purchase.purchasedAt)}</td>
                   <td className="px-4 py-3">
                     {role !== "seller" ? (
@@ -152,9 +152,9 @@ export function PurchaseHistory({
                     ) : <span className="font-medium text-stone-900">{purchase.partner.displayName}</span>}
                     <span className="ml-2 text-xs">{purchase.partner.code}</span>
                   </td>
-                  <td className="px-4 py-3">{purchase.amount} € ({purchase.vatRatePercent} %)</td>
-                  <td className="px-4 py-3 font-medium">{purchase.netAmount} €</td>
-                  <td className="whitespace-nowrap px-4 py-3 text-base font-bold tabular-nums">{purchase.points}</td>
+                  <td className="financial-value whitespace-nowrap px-4 py-3">{purchase.amount} € <span className="font-sans text-xs text-white/60">({purchase.vatRatePercent} %)</span></td>
+                  <td className="financial-value whitespace-nowrap px-4 py-3 font-medium">{purchase.netAmount} €</td>
+                  <td className="financial-value whitespace-nowrap px-4 py-3 text-base font-bold tabular-nums">{purchase.points}</td>
                   <td className="px-4 py-3"><AuthorBadge name={purchase.createdBy.name} /></td>
                   <td className="px-4 py-3"><StatusBadge purchase={purchase} /></td>
                 </tr>

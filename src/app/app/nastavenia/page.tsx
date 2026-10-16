@@ -14,13 +14,13 @@ export default async function CompanySettingsPage() {
 
   return (
     <section>
-      <p className="text-sm font-semibold uppercase tracking-[0.16em] text-amber-800">Firma</p>
-      <h1 className="mt-3 text-3xl font-semibold tracking-tight text-stone-950">Nastavenia firmy</h1>
-      <p className="mt-3 max-w-2xl leading-7 text-stone-600">
+      <p className="text-xs font-semibold tracking-[0.14em] text-white/85">FIRMA</p>
+      <h1 className="mt-3 text-3xl font-bold tracking-tight text-white sm:text-4xl">Nastavenia firmy</h1>
+      <p className="mt-3 max-w-2xl leading-7 text-white/70">
         Nastavte sadzbu DPH, potvrdenie vysokej sumy a mesačné hranice partnerských ocenení počítané z obratu bez DPH.
       </p>
       {context.user.role !== "admin" ? (
-        <p className="mt-4 max-w-2xl rounded-md bg-amber-50 p-3 text-sm text-amber-900">
+        <p className="glass-surface mt-4 max-w-2xl rounded-xl p-3 text-sm text-white">
           Tieto nastavenia môže meniť iba admin danej firmy. Ako superadmin ich vidíte len na čítanie.
         </p>
       ) : null}

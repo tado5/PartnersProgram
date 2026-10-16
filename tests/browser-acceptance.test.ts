@@ -7,6 +7,7 @@ import { chromium, type BrowserContext, type Page } from "playwright";
 import sharp from "sharp";
 
 import { prisma } from "../src/server/db";
+import { companyCookieName } from "../src/server/auth/company-cookie";
 
 const base = "http://127.0.0.1:3017";
 const origin = "https://partners.example.invalid";
@@ -135,6 +136,30 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
       entityId: otherPartner.id, partnerId: otherPartner.id, newValues: { displayName: "Browser Beta Secret" },
     } });
 
+    await t.test("partner token dialog traps focus and restores it on close", async () => {
+      const page = await session(admin.email);
+      await page.goto(`${origin}/app/partneri/${partner.id}`);
+      await page.getByRole("button", { name: "Nový NFC", exact: true }).click();
+      const generate = page.getByRole("button", { name: "Vygenerovať NFC", exact: true });
+      await generate.click();
+      const dialog = page.getByRole("dialog", { name: "Token je vytvorený" });
+      await dialog.waitFor();
+      assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "Zavrieť");
+
+      await dialog.getByRole("button", { name: "Hotovo a zavrieť", exact: true }).evaluate((element) => {
+        (element as HTMLButtonElement).focus();
+      });
+      await page.keyboard.press("Tab");
+      assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "Zavrieť");
+      await page.keyboard.press("Escape");
+      await dialog.waitFor({ state: "detached" });
+      await page.waitForFunction(() => {
+        const active = document.activeElement;
+        return active instanceof HTMLButtonElement &&
+          active.textContent?.trim() === "Nový NFC" && !active.disabled;
+      });
+    });
+
     await t.test("desktop filters, pagination, change details and private-value masking", async () => {
       const page = await session(admin.email);
       await page.goto(`${origin}/app/audit`);
@@ -170,12 +195,20 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
 
     await t.test("superadmin company switching removes previous-company audit", async () => {
       const page = await session(superadmin.email);
+      await page.goto(`${origin}/superadmin/firmy`);
+      assert.equal(await page.getByRole("button", { name: "Ukončiť firemný kontext", exact: true }).count(), 0);
       for (const [id, expected, forbidden] of [
         [company.id, "Browser Alpha Partner", "Browser Beta Secret"],
         [second.id, "Browser Beta Secret", "Browser Alpha Partner"],
       ] as const) {
         await page.goto(`${origin}/superadmin/firmy/${id}`);
+        const selectionResponse = page.waitForResponse((response) =>
+          response.url().endsWith("/api/superadmin/company-context") &&
+          response.request().method() === "POST");
         await page.getByRole("button", { name: "Otvoriť program firmy", exact: true }).click();
+        const selected = await selectionResponse;
+        assert.equal(selected.status(), 200);
+        assert.equal(selected.headers()["clear-site-data"], undefined);
         await page.waitForURL(`${origin}/app`);
         await page.goto(`${origin}/app/audit`);
         await page.getByRole("link", { name: new RegExp(expected) }).first().waitFor();
@@ -185,7 +218,37 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
           assert.match(csv, new RegExp(expected));
           assert.doesNotMatch(csv, new RegExp(forbidden));
         }
+        if (id === company.id) {
+          await page.goto(`${origin}/app/nakupy/novy?partner=${partner.id}&source=manual`);
+          let unexpectedDialog = false;
+          page.once("dialog", async (dialog) => {
+            unexpectedDialog = true;
+            await dialog.dismiss();
+          });
+          await page.getByRole("link", { name: /Späť na firmy \/ zmeniť firmu/ }).click();
+          await page.waitForURL(`${origin}/superadmin/firmy`);
+          assert.equal(unexpectedDialog, false, "untouched controlled forms should not trigger an unsaved-changes dialog");
+          page.removeAllListeners("dialog");
+        }
       }
+      await page.goto(`${origin}/app/nakupy/novy?partner=${otherPartner.id}&source=manual`);
+      await page.getByLabel("Suma nákupu s DPH", { exact: false }).fill("77,77");
+      const leaveDialog = page.waitForEvent("dialog", { timeout: 5_000 }).then(async (dialog) => {
+        assert.match(dialog.message(), /rozpísané formuláre/);
+        await dialog.accept();
+      });
+      await page.getByRole("link", { name: /Späť na firmy \/ zmeniť firmu/ }).click();
+      await leaveDialog;
+      await page.waitForURL(`${origin}/superadmin/firmy`);
+      const endContext = page.getByRole("button", { name: "Ukončiť firemný kontext", exact: true });
+      await endContext.waitFor();
+      const clearResponse = page.waitForResponse((response) =>
+        response.url().endsWith("/api/superadmin/company-context") &&
+        response.request().method() === "DELETE");
+      await Promise.all([page.waitForNavigation(), endContext.click()]);
+      assert.equal((await clearResponse).status(), 200);
+      assert.equal((await page.context().cookies(origin)).some((cookie) => cookie.name === companyCookieName), false);
+      assert.equal(await page.getByRole("button", { name: "Ukončiť firemný kontext", exact: true }).count(), 0);
     });
 
     await t.test("seller cannot open admin audit in the browser", async () => {

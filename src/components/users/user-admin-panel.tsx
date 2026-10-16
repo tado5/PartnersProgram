@@ -202,7 +202,7 @@ export function UserAdminPanel({
 
   return (
     <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_20rem]">
-      <section className="rounded-xl border border-stone-200 bg-white px-5">
+      <section className="data-surface rounded-xl px-5">
         <div className="py-5">
           <h2 className="text-lg font-semibold text-stone-950">Používateľské účty</h2>
           <p className="mt-1 text-sm text-stone-600">
@@ -220,7 +220,7 @@ export function UserAdminPanel({
         )}
       </section>
 
-      <aside className="h-fit rounded-xl border border-stone-200 bg-white p-5">
+      <aside className="data-surface h-fit rounded-xl p-5">
         <h2 className="text-lg font-semibold text-stone-950">Nový účet</h2>
         <p className="mt-1 text-sm leading-6 text-stone-600">
           Používateľ sa po prvom prihlásení musí zmeniť dočasné heslo.

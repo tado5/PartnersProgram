@@ -26,7 +26,7 @@ export default async function AuditPage({ searchParams }: {
   const filters = parseCompanyAuditFilters(params, context.companyId, env.APP_TIMEZONE);
   if (!filters) {
     return <section>
-      <h1 className="text-3xl font-semibold">Audit log</h1>
+      <h1 className="text-3xl font-bold text-white sm:text-4xl">Audit log</h1>
       <p role="alert" className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">Filtre auditu nie sú platné. Skontrolujte dátumy, ID a číslo strany.</p>
     </section>;
   }
@@ -58,14 +58,14 @@ export default async function AuditPage({ searchParams }: {
   return (
     <section>
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <h1 className="text-3xl font-semibold tracking-tight text-stone-950">Audit log</h1>
+        <h1 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">Audit log</h1>
         <CsvExportForm kind="audit-logs" query={params.toString()} />
       </div>
-      <p className="mt-1 max-w-3xl text-xs leading-5 text-stone-600">
+      <p className="mt-1 max-w-3xl text-sm leading-6 text-white/70">
         Nemenná história zmien a prístupov v programe firmy. Citlivé údaje, ako heslá a kontaktné poznámky, sa nezobrazujú.
       </p>
 
-      <form className="my-4 grid gap-x-3 gap-y-2 rounded-xl border border-stone-200 bg-white p-3 sm:grid-cols-2 lg:grid-cols-4 [&_label]:min-w-0 [&_label]:text-xs [&_input]:min-w-0 [&_input]:min-h-10 [&_input]:py-1.5 [&_input]:text-sm [&_select]:min-w-0 [&_select]:min-h-10 [&_select]:py-1.5 [&_select]:text-sm">
+      <form className="glass-surface my-4 grid gap-x-3 gap-y-2 rounded-xl p-3 sm:grid-cols-2 lg:grid-cols-4 [&_label]:min-w-0 [&_label]:text-xs [&_input]:min-w-0 [&_input]:min-h-10 [&_input]:py-1.5 [&_input]:text-sm [&_select]:min-w-0 [&_select]:min-h-10 [&_select]:py-1.5 [&_select]:text-sm">
         <label className="text-sm font-medium text-stone-700">
           Od
           <input className="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2" type="date" name="from" defaultValue={filters.from} />

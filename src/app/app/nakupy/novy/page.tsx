@@ -43,10 +43,10 @@ export default async function NewPurchasePage({
 
   return (
     <section className="mx-auto max-w-3xl">
-      <p className="text-sm font-semibold uppercase tracking-[0.16em] text-amber-800">Nový nákup</p>
-      <h1 className="mt-3 text-3xl font-semibold tracking-tight text-stone-950">{partner.displayName}</h1>
-      <p className="mt-2 text-sm text-stone-600">
-        {partner.code} · <strong className="text-base font-bold text-stone-950">{totals._sum.points ?? 0} bodov</strong> · obrat {formatAmount(totals._sum.netAmount)} € bez DPH · {formatAmount(totals._sum.amount)} € s DPH
+      <p className="text-xs font-semibold tracking-[0.14em] text-white/85">NOVÝ NÁKUP</p>
+      <h1 className="mt-3 text-3xl font-bold tracking-tight text-white sm:text-4xl">{partner.displayName}</h1>
+      <p className="mt-2 text-sm text-white/70">
+        {partner.code} · <strong className="financial-value text-base font-bold text-white">{totals._sum.points ?? 0} bodov</strong> · obrat <span className="financial-value">{formatAmount(totals._sum.netAmount)} €</span> bez DPH · <span className="financial-value">{formatAmount(totals._sum.amount)} €</span> s DPH
       </p>
       <div className="mt-6">
         <PurchaseForm

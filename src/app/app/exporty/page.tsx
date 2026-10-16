@@ -14,13 +14,13 @@ export default async function ExportsPage() {
 
   return (
     <section>
-      <h1 className="text-3xl font-semibold tracking-tight text-stone-950">Exporty CSV</h1>
-      <p className="mt-2 max-w-3xl text-sm leading-6 text-stone-600">
+      <h1 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">Exporty CSV</h1>
+      <p className="mt-2 max-w-3xl text-sm leading-6 text-white/70">
         Export obsahuje všetky záznamy zodpovedajúce filtrom aktuálnej firmy, nie iba zobrazenú stranu.
         Súbory používajú UTF-8 s BOM, bodkočiarku a desatinnú čiarku pre Excel.
         Dátumy sú v pásme {env.APP_TIMEZONE}. Každé vytvorenie exportu sa zaznamená do auditu.
       </p>
-      <p className="mt-2 max-w-3xl text-sm leading-6 text-stone-600">
+      <p className="mt-2 max-w-3xl text-sm leading-6 text-white/70">
         Ak Excel nerozdelí stĺpce správne, použite import z textu/CSV: kódovanie UTF-8,
         oddeľovač bodkočiarka a desatinná čiarka (slovenské miestne nastavenie).
       </p>
@@ -102,9 +102,9 @@ export default async function ExportsPage() {
 }
 
 function Panel({ title, description, children }: { title: string; description: string; children: ReactNode }) {
-  return <section className="min-w-0 rounded-xl border border-stone-200 bg-white p-4 sm:p-5">
-    <h2 className="text-xl font-semibold text-stone-950">{title}</h2>
-    <p className="mb-4 mt-2 text-sm leading-6 text-stone-600">{description}</p>
+  return <section className="data-surface min-w-0 rounded-xl p-4 sm:p-5">
+    <h2 className="text-xl font-semibold text-white">{title}</h2>
+    <p className="mb-4 mt-2 text-sm leading-6 text-white/70">{description}</p>
     {children}
   </section>;
 }

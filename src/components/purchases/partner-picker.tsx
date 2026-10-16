@@ -100,11 +100,11 @@ export function PartnerPicker() {
       </p>
 
       {state?.items.length ? (
-        <ul className={`mt-2 divide-y divide-stone-200 overflow-hidden rounded-xl border border-stone-200 bg-white ${loading ? "opacity-60" : ""}`}>
+        <ul aria-busy={loading} className={`data-surface mt-2 divide-y divide-stone-200 overflow-hidden rounded-xl ${loading ? "opacity-60" : ""}`}>
           {state.items.map((partner) => (
             <li key={partner.id}>
               <Link
-                className="flex min-h-14 items-center gap-3 px-4 py-3 hover:bg-amber-50"
+                className="flex min-h-14 items-center gap-3 px-4 py-3 transition-colors hover:bg-amber-50"
                 href={`/app/nakupy/novy?partner=${encodeURIComponent(partner.id)}&source=manual`}
               >
                 <span className="min-w-0 flex-1">

@@ -107,7 +107,7 @@ export function PurchaseAdminForm({
   }
 
   return (
-    <form onSubmit={(event) => void submit(event)} className="rounded-xl border border-stone-200 bg-white p-5">
+    <form aria-busy={pending} onSubmit={(event) => void submit(event)} className="data-surface rounded-xl p-5">
       {purchase.isDeleted ? (
         <p className="rounded-md bg-red-50 p-3 text-sm font-medium text-red-800">Tento nákup je zmazaný a body sa nezapočítavajú.</p>
       ) : (
@@ -123,7 +123,7 @@ export function PurchaseAdminForm({
                 {searchingPartners ? "Hľadám…" : "Vyhľadať"}
               </button>
             </div>
-            {partnerMatches.length ? <ul className="mt-2 divide-y rounded-md border">
+            {partnerMatches.length ? <ul className="data-surface mt-2 divide-y overflow-hidden rounded-md">
               {partnerMatches.map((match) => <li key={match.id}>
                 <button type="button" className="w-full p-2 text-left text-sm hover:bg-stone-50"
                   onClick={() => { setSelectedPartner(match); setPartnerMatches([]); }}>
@@ -159,8 +159,8 @@ export function PurchaseAdminForm({
           </label>
           {/^\d{1,6}(?:[.,]\d{1,2})?$/.test(amount.trim()) ? (() => {
             const preview = netAmountFromGross(amount.replace(",", "."), purchase.vatRatePercent);
-            return <p className="mt-3 rounded-md bg-stone-50 p-3 text-sm">
-              Bez DPH: <strong>{preview.netAmount} €</strong> · DPH: {preview.vatAmount} € · body: <strong className="text-base font-bold">{pointsForAmount(preview.netAmount)}</strong>
+            return <p className="mt-3 rounded-md border border-white/12 bg-white/5 p-3 text-sm">
+              Bez DPH: <strong className="financial-value">{preview.netAmount} €</strong> · DPH: <span className="financial-value">{preview.vatAmount} €</span> · body: <strong className="financial-value text-base font-bold">{pointsForAmount(preview.netAmount)}</strong>
             </p>;
           })() : null}
           <div className="mt-4 flex flex-wrap gap-3">
@@ -179,6 +179,6 @@ export function PurchaseAdminForm({
 }
 
 const inputClass = "mt-2 block w-full rounded-md border border-stone-300 px-3 py-2";
-const primaryButton = "rounded-md bg-stone-950 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50";
-const dangerButton = "rounded-md border border-red-300 px-4 py-2.5 text-sm font-semibold text-red-800 disabled:opacity-50";
-const secondaryButton = "inline-flex rounded-md border border-stone-300 px-4 py-2.5 text-sm font-semibold text-stone-700";
+const primaryButton = "min-h-11 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50";
+const dangerButton = "min-h-11 rounded-lg border border-[color:var(--color-pink)]/45 bg-[color:var(--color-pink)]/10 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50";
+const secondaryButton = "inline-flex min-h-11 items-center rounded-lg border border-white/20 bg-white/5 px-4 py-2.5 text-sm font-semibold text-white hover:bg-white/10";

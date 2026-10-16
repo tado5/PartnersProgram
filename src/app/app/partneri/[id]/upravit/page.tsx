@@ -22,10 +22,10 @@ export default async function EditPartnerPage({
 
   return (
     <section className="mx-auto max-w-3xl">
-      <p className="text-sm font-semibold uppercase tracking-[0.16em] text-amber-800">
+      <p className="text-xs font-semibold tracking-[0.14em] text-white/85">
         {partner.code}
       </p>
-      <h1 className="mb-6 mt-3 text-3xl font-semibold tracking-tight text-stone-950">
+      <h1 className="mb-6 mt-3 text-3xl font-bold tracking-tight text-white sm:text-4xl">
         Upraviť partnera
       </h1>
       <PartnerForm

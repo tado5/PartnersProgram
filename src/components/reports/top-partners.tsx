@@ -5,29 +5,30 @@ export type TopPartner = {
 };
 
 const podium = [
-  { label: "1. miesto", medal: "🥇", card: "border-amber-300 bg-gradient-to-br from-amber-50 to-yellow-100", accent: "text-amber-800", ring: "bg-amber-400 text-amber-950" },
-  { label: "2. miesto", medal: "🥈", card: "border-slate-300 bg-gradient-to-br from-slate-50 to-slate-200", accent: "text-slate-700", ring: "bg-slate-300 text-slate-900" },
-  { label: "3. miesto", medal: "🥉", card: "border-orange-300 bg-gradient-to-br from-orange-50 to-orange-200", accent: "text-orange-900", ring: "bg-orange-400 text-orange-950" },
+  { label: "1. miesto", medal: "🥇", tone: "podium-card--gold" },
+  { label: "2. miesto", medal: "🥈", tone: "podium-card--silver" },
+  { label: "3. miesto", medal: "🥉", tone: "podium-card--bronze" },
 ] as const;
 
 function TopPartnerCard({ rank, partner }: { rank: number; partner: TopPartner }) {
   const style = podium[rank - 1];
   return (
-    <li className={`rounded-xl border p-4 ${style.card}`}>
+    <li className={`podium-card ${style.tone} rounded-xl p-4`}>
       <div className="flex items-center justify-between gap-3">
-        <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold ${style.ring}`}>
-          <span aria-hidden>{style.medal}</span>{style.label}
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-black/25 px-2.5 py-1 text-xs font-bold text-white">
+          <span aria-hidden="true">{style.medal}</span>
+          <span>{style.label}</span>
         </span>
         <span className="text-xs text-stone-600">{partner.code}</span>
       </div>
       <Link className="mt-3 block truncate font-semibold text-stone-950 underline" href={`/app/partneri/${partner.id}`}>
         {partner.displayName}
       </Link>
-      <p className={`mt-2 text-4xl font-extrabold tracking-tight tabular-nums ${style.accent}`}>
+      <p className="podium-points financial-value mt-2 text-4xl font-extrabold tracking-tight">
         {partner.points.toLocaleString("sk-SK")} <span className="text-lg font-bold">bodov</span>
       </p>
       <p className="mt-1 text-sm text-stone-700">
-        Tržba <strong>{partner.netAmount} €</strong> bez DPH · {partner.grossAmount} € s DPH
+        Tržba <strong className="financial-value">{partner.netAmount} €</strong> bez DPH · <span className="financial-value">{partner.grossAmount} €</span> s DPH
       </p>
     </li>
   );
@@ -49,7 +50,7 @@ export function TopPartners({ partners, label, className = "" }: {
           ))}
         </ol>
       ) : (
-        <p className="mt-4 rounded-xl border border-stone-200 bg-white p-5 text-sm text-stone-600">Za toto obdobie nie sú evidované nákupy.</p>
+        <p className="glass-surface mt-4 rounded-xl p-5 text-sm text-white/75">Za toto obdobie nie sú evidované nákupy.</p>
       )}
     </section>
   );

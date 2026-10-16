@@ -1,7 +1,9 @@
 import type { ReactNode } from "react";
+import { cookies } from "next/headers";
 import { SessionActivity } from "@/components/auth/session-activity";
 import { AppShell, type ShellNavItem } from "@/components/app-shell";
 import { ClearCompanyContext } from "@/components/companies/company-controls";
+import { companyCookieName, readCompanySelection } from "@/server/auth/company-cookie";
 import { requireSuperadminPage } from "@/server/auth/superadmin";
 
 export const instant = false;
@@ -14,6 +16,9 @@ const items: ShellNavItem[] = [
 
 export default async function SuperadminLayout({ children }: { children: ReactNode }) {
   const context = await requireSuperadminPage();
+  const selection = readCompanySelection((await cookies()).get(companyCookieName)?.value);
+  const hasActiveCompanyContext = selection?.userId === context.user.id.toString() &&
+    selection.loginAt === context.session.user.loginAt;
   return <>
     <SessionActivity />
     <AppShell
@@ -22,7 +27,7 @@ export default async function SuperadminLayout({ children }: { children: ReactNo
       items={items}
       userName={context.user.name}
       userRole="Superadmin"
-      footerExtra={<ClearCompanyContext />}
+      footerExtra={hasActiveCompanyContext ? <ClearCompanyContext /> : undefined}
     >
       {children}
     </AppShell>

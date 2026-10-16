@@ -140,12 +140,12 @@ export default async function PartnerDetailPage({
           lastUsedAt: token.lastUsedAt?.toISOString() ?? null,
         }))}
       />
-      <section className="mt-8 rounded-xl border border-stone-200 bg-white p-5">
-        <h2 className="text-xl font-semibold">Mesačné ocenenia</h2>
+      <section className="glass-surface mt-8 rounded-xl p-5">
+        <h2 className="text-xl font-semibold text-white">Mesačné ocenenia</h2>
         <p className="mt-2 text-stone-700">
-          Tento mesiac: <strong>{currentBadge.label ?? "bez odznaku"}</strong> · obrat {monthNetAmount} € bez DPH
+          Tento mesiac: <strong>{currentBadge.label ?? "bez odznaku"}</strong> · obrat <strong className="financial-value">{monthNetAmount} €</strong> bez DPH
         </p>
-        <p className="mt-1 text-sm text-stone-600">Tržba {monthGrossAmount} € s DPH · celkom {totals._sum.netAmount?.toFixed(2) ?? "0.00"} € bez DPH / {totals._sum.amount?.toFixed(2) ?? "0.00"} € s DPH · <strong className="text-base font-bold text-stone-950">{totals._sum.points ?? 0} bodov</strong> (body sa počítajú zo sumy bez DPH).</p>
+        <p className="mt-1 text-sm text-stone-600">Tržba <span className="financial-value">{monthGrossAmount} €</span> s DPH · celkom <span className="financial-value">{totals._sum.netAmount?.toFixed(2) ?? "0.00"} €</span> bez DPH / <span className="financial-value">{totals._sum.amount?.toFixed(2) ?? "0.00"} €</span> s DPH · <strong className="financial-value text-base font-bold text-stone-950">{totals._sum.points ?? 0} bodov</strong> (body sa počítajú zo sumy bez DPH).</p>
         <div className="mt-4 flex flex-wrap gap-4 text-sm">
           <span>Bronzový: {awardCounts.bronze} mes.</span>
           <span>Strieborný: {awardCounts.silver} mes.</span>
@@ -157,7 +157,7 @@ export default async function PartnerDetailPage({
               <li key={award.periodStart.toISOString()} className="flex flex-wrap justify-between gap-2 py-3">
                 <span>{monthLabel(award.periodStart)} · {badgeLabel(award.tier)}</span>
                 <span className="text-sm text-stone-600">
-                  {award.monthlyTurnover.toFixed(2)} € {award.calculationBasis === "net" ? "bez DPH" : "s DPH (historický výpočet)"} / hranica {award.thresholdEur.toFixed(2)} €
+                  <span className="financial-value">{award.monthlyTurnover.toFixed(2)} €</span> {award.calculationBasis === "net" ? "bez DPH" : "s DPH (historický výpočet)"} / hranica <span className="financial-value">{award.thresholdEur.toFixed(2)} €</span>
                 </span>
               </li>
             ))}
@@ -183,7 +183,7 @@ export default async function PartnerDetailPage({
           <div className="flex flex-wrap items-center gap-3">
           <CsvExportForm kind="purchases" query={`partnerId=${partner.id}&includeDeleted=true`} />
           {partner.isActive && context.company.isActive ? (
-            <Link className="rounded-md bg-stone-950 px-4 py-2.5 text-sm font-semibold text-white"
+            <Link className="min-h-11 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
               href={`/app/nakupy/novy?partner=${partner.id.toString()}`}>
               Pridať nákup
             </Link>

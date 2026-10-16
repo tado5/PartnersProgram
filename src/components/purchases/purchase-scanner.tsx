@@ -115,19 +115,19 @@ export function PurchaseScanner() {
 
   return (
     <section className="mx-auto max-w-6xl">
-      <p className="text-sm font-semibold uppercase tracking-[0.16em] text-amber-800">Zápis nákupu</p>
-      <h1 className="mt-3 text-3xl font-semibold tracking-tight text-stone-950 lg:text-4xl">Vyberte partnera</h1>
-      <p className="mt-2 max-w-2xl leading-7 text-stone-600">Naskenujte QR kód alebo priložte NFC kartu partnera.</p>
+      <p className="text-xs font-semibold tracking-[0.14em] text-white/85">ZÁPIS NÁKUPU</p>
+      <h1 className="mt-3 text-3xl font-bold tracking-tight text-white sm:text-4xl">Vyberte partnera</h1>
+      <p className="mt-2 max-w-2xl leading-7 text-white/70">Naskenujte QR kód alebo priložte NFC kartu partnera.</p>
       <div className="mt-6 grid gap-5 lg:grid-cols-2">
-        <section className="flex flex-col rounded-2xl border border-stone-200 bg-white p-5 shadow-sm sm:p-7">
+        <section className="glass-surface flex flex-col rounded-2xl p-5 sm:p-7">
           <div className="flex items-center gap-3">
-            <span className="grid size-12 place-items-center rounded-xl bg-stone-950 text-white"><QrCode aria-hidden className="size-6" /></span>
+            <span className="grid size-12 place-items-center rounded-xl border border-primary/35 bg-primary/10 text-primary"><QrCode aria-hidden className="size-6" /></span>
             <div>
-              <h2 className="text-xl font-semibold text-stone-950">QR kód</h2>
-              <p className="text-sm text-stone-500">Kamera telefónu alebo počítača</p>
+              <h2 className="text-xl font-semibold text-white">QR kód</h2>
+              <p className="text-sm text-white/65">Kamera telefónu alebo počítača</p>
             </div>
           </div>
-          <video ref={videoRef} className="mt-5 aspect-[4/3] w-full rounded-xl bg-stone-950 object-cover" playsInline muted />
+          <video ref={videoRef} aria-label="Náhľad kamery pri skenovaní QR kódu" className="mt-5 aspect-[4/3] w-full rounded-xl border border-white/15 bg-black object-cover" playsInline muted />
           <div className="mt-5">
             {!cameraActive ? (
               <button type="button" onClick={() => void startCamera()} className={`${primaryButton} w-full`}>
@@ -137,45 +137,45 @@ export function PurchaseScanner() {
               <button type="button" onClick={stopCamera} className={`${secondaryButton} w-full`}>Zastaviť kameru</button>
             )}
           </div>
-          <p className="mt-3 text-xs leading-5 text-stone-500">Skenovanie kamerou vyžaduje povolenie kamery a v produkcii HTTPS.</p>
+          <p className="mt-3 text-xs leading-5 text-white/60">Skenovanie kamerou vyžaduje povolenie kamery a v produkcii HTTPS.</p>
         </section>
-        <section className="flex flex-col rounded-2xl border border-stone-200 bg-white p-5 shadow-sm sm:p-7">
+        <section className="glass-surface flex flex-col rounded-2xl p-5 sm:p-7">
           <div className="flex items-center gap-3">
-            <span className="grid size-12 place-items-center rounded-xl bg-amber-800 text-white"><Nfc aria-hidden className="size-6" /></span>
+            <span className="grid size-12 place-items-center rounded-xl border border-secondary/35 bg-secondary/15 text-white"><Nfc aria-hidden className="size-6" /></span>
             <div>
-              <h2 className="text-xl font-semibold text-stone-950">NFC karta</h2>
-              <p className="text-sm text-stone-500">Priloženie karty k telefónu</p>
+              <h2 className="text-xl font-semibold text-white">NFC karta</h2>
+              <p className="text-sm text-white/65">Priloženie karty k telefónu</p>
             </div>
           </div>
-          <div className="mt-5 grid aspect-[4/3] w-full place-items-center rounded-xl border-2 border-dashed border-stone-200 bg-stone-50 p-6 text-center">
+          <div className="mt-5 grid aspect-[4/3] w-full place-items-center rounded-xl border-2 border-dashed border-white/20 bg-black/20 p-6 text-center">
             <div>
-              <Nfc aria-hidden className={`mx-auto size-20 ${nfcSupported ? "text-amber-800" : "text-stone-300"}`} />
-              <p className="mt-4 text-sm leading-6 text-stone-600">
+              <Nfc aria-hidden className={`mx-auto size-20 ${nfcSupported ? "text-secondary" : "text-white/35"}`} />
+              <p className="mt-4 text-sm leading-6 text-white/70">
                 {nfcSupported ? "Web NFC je dostupné. Spustite čítanie a priložte kartu." : "NFC skenovanie nie je v tomto prehliadači dostupné (funguje v Chrome na Androide)."}
               </p>
             </div>
           </div>
           <div className="mt-5">
-            <button type="button" disabled={!nfcSupported} onClick={() => void startNfc()} className={`${primaryButton} w-full disabled:cursor-not-allowed disabled:bg-stone-300`}>
+            <button type="button" disabled={!nfcSupported} onClick={() => void startNfc()} className={`${primaryButton} w-full disabled:cursor-not-allowed disabled:border disabled:border-white/15 disabled:bg-white/10 disabled:text-white/70`}>
               Načítať NFC
             </button>
           </div>
-          <p className="mt-3 text-xs leading-5 text-stone-500">Ak NFC nie je dostupné, použite QR kód alebo zápis bez karty.</p>
+          <p className="mt-3 text-xs leading-5 text-white/60">Ak NFC nie je dostupné, použite QR kód alebo zápis bez karty.</p>
         </section>
       </div>
-      {message ? <p role="status" className="mt-4 rounded-md bg-amber-50 p-3 text-sm text-stone-800">{message}</p> : null}
+      {message ? <p role="status" className="glass-surface mt-4 rounded-xl p-3 text-sm text-white">{message}</p> : null}
       <Link
-        className="mt-5 flex min-h-16 items-center gap-4 rounded-2xl border border-stone-200 bg-white p-5 shadow-sm hover:border-amber-300 hover:bg-amber-50"
+        className="glass-surface mt-5 flex min-h-16 items-center gap-4 rounded-2xl p-5 transition-colors hover:border-primary/40 hover:bg-white/10"
         href="/app/nakupy/manualne"
       >
-        <span className="grid size-12 shrink-0 place-items-center rounded-xl bg-stone-100 text-stone-700"><UserSearch aria-hidden className="size-6" /></span>
+        <span className="grid size-12 shrink-0 place-items-center rounded-xl border border-white/15 bg-white/5 text-white"><UserSearch aria-hidden className="size-6" /></span>
         <span className="min-w-0 flex-1">
-          <span className="block font-semibold text-stone-950">Partner nemá kartu?</span>
-          <span className="block text-sm text-stone-600">Vyhľadajte ho v zozname a zapíšte nákup ručne.</span>
+          <span className="block font-semibold text-white">Partner nemá kartu?</span>
+          <span className="block text-sm text-white/65">Vyhľadajte ho v zozname a zapíšte nákup ručne.</span>
         </span>
         <ChevronRight aria-hidden className="size-5 shrink-0 text-stone-400" />
       </Link>
-      <Link className="mt-6 inline-block text-sm font-medium text-amber-800 underline" href="/app">Späť na úvod</Link>
+      <Link className="mt-6 inline-block text-sm font-medium text-white/90 underline decoration-primary/50 underline-offset-4 hover:text-white" href="/app">Späť na úvod</Link>
     </section>
   );
 }
@@ -202,5 +202,5 @@ function tokenFromScan(value: string) {
   }
 }
 
-const primaryButton = "min-h-12 rounded-lg bg-stone-950 px-5 py-3 text-base font-semibold text-white hover:bg-stone-800";
-const secondaryButton = "min-h-12 rounded-lg border border-stone-300 px-5 py-3 text-base font-semibold text-stone-700 hover:bg-stone-100";
+const primaryButton = "min-h-12 rounded-lg bg-primary px-5 py-3 text-base font-semibold text-primary-foreground hover:bg-primary/90";
+const secondaryButton = "min-h-12 rounded-lg border border-white/20 bg-white/5 px-5 py-3 text-base font-semibold text-white hover:bg-white/10";

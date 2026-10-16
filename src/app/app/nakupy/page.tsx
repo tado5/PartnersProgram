@@ -67,8 +67,8 @@ export default async function PurchasesPage({
     <section>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.16em] text-amber-800">Evidencia</p>
-          <h1 className="mt-3 text-3xl font-semibold tracking-tight text-stone-950">
+          <p className="text-xs font-semibold tracking-[0.14em] text-white/85">EVIDENCIA</p>
+          <h1 className="mt-3 text-3xl font-bold tracking-tight text-white sm:text-4xl">
             {context.user.role === "seller" ? "Moje dnešné nákupy" : "Nákupy"}
           </h1>
         </div>
@@ -79,13 +79,13 @@ export default async function PurchasesPage({
             ...(to ? { to } : {}),
             includeDeleted: String(includeDeleted),
           }).toString()} /> : null}
-          <Link className="rounded-md bg-stone-950 px-4 py-2.5 text-sm font-semibold text-white" href="/app/sken">
+          <Link className="min-h-11 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90" href="/app/sken">
             Nový nákup
           </Link>
         </div>
       </div>
       {context.user.role !== "seller" ? (
-        <form method="get" className="mt-6 flex flex-wrap items-end gap-3 rounded-xl border border-stone-200 bg-white p-4">
+        <form method="get" className="glass-surface mt-6 flex flex-wrap items-end gap-3 rounded-xl p-4">
           {partnerId ? <input type="hidden" name="partnerId" value={partnerId.toString()} /> : null}
           {includeDeleted ? <input type="hidden" name="includeDeleted" value="true" /> : null}
           <label className="block text-sm font-medium text-stone-700">
