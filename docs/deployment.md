@@ -96,7 +96,7 @@ Prisma klient je singleton. `/api/health` overuje `SELECT 1`.
 | `NEXT_TELEMETRY_DISABLED` | `1` |
 
 Aplikácia pri štarte validuje použité aplikačné premenné cez Zod. V produkcii odmietne `APP_BASE_URL` s `localhost` alebo `http://`.
-`DATABASE_URL` je pre aplikáciu povinná. `MIGRATE_DATABASE_URL` a `SHADOW_DATABASE_URL` nie sú potrebné na spustenie aplikácie; vyžaduje ich konfigurácia Prisma pre databázové príkazy.
+`DATABASE_URL` je pre aplikáciu povinná. `MIGRATE_DATABASE_URL` vyžaduje konfigurácia Prisma pre databázové príkazy. `SHADOW_DATABASE_URL` sa nastavuje iba vo vývojovej konfigurácii Prisma pre `migrate dev`; pri `NODE_ENV=production` sa ignoruje a na serveri ju vynechajte. Shadow databáza nikdy nesmie byť totožná s hlavnou databázou. V produkcii používajte iba `npm run db:deploy`, nie `db:migrate` ani reset.
 
 ## 8. Build
 `npm run build` najprv spustí `npm run db:generate` a až po úspešnom

@@ -12,6 +12,9 @@ export default defineConfig({
   datasource: {
     url: env("DATABASE_URL"),
     directUrl: env("MIGRATE_DATABASE_URL"),
-    shadowDatabaseUrl: env("SHADOW_DATABASE_URL"),
+    shadowDatabaseUrl:
+      process.env.NODE_ENV === "production"
+        ? undefined
+        : env("SHADOW_DATABASE_URL"),
   },
 });
