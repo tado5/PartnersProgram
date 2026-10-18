@@ -19,6 +19,7 @@
     "test:phase11": "npm run test:unit && ACCEPTANCE_PHASE11=1 npm run test:acceptance",
     "test:logo": "node --import tsx --test tests/company-logo.test.ts",
     "db:generate": "prisma generate",
+    "db:check": "node scripts/check-database.mjs",
     "db:provision": "docker compose exec -T db bash /docker-entrypoint-initdb.d/01-databases-and-users.sh",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",

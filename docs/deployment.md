@@ -40,6 +40,7 @@ Pred seedovaním vyplňte v `.env` `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` a
 | Úloha | Príkaz |
 |---|---|
 | Spustiť databázu | `docker compose up -d db` |
+| Overiť DB pripojenie bez zmeny údajov | `npm run db:check` |
 | Vytvoriť DB účty/databázy (idempotentne) | `npm run db:provision` |
 | Migrovať vývojovú DB | `npm run db:migrate` |
 | Migrovať testovaciu DB | `MIGRATE_DATABASE_URL='mysql://europodlahy_migrate:<heslo>@127.0.0.1:3308/europodlahy_test' npm run db:deploy` |
@@ -102,6 +103,12 @@ Aplikácia pri štarte validuje použité aplikačné premenné cez Zod. V produ
 vygenerovaní Prisma klienta spustí `next build`. Tento krok nemení databázu
 a nenahrádza migrácie. Na hostingu netreba samostatný krok `npm run db:generate`;
 pri inštalácii použite `npm install --include=dev`, aby boli dostupné aj build nástroje.
+
+V Hostcreatore možno po builde zapnúť krok `npm run %s` s parametrom
+`db:check`. Spustí iba `SELECT 1`, nepotrebuje existujúce aplikačné tabuľky
+a nevykonáva migrácie ani seed. Pri chybe vypíše diagnostiku bez pripojovacej
+URL a hesla a skončí s nenulovým návratovým kódom. Úspech potvrdzuje iba
+pripojenie, nie pripravenosť schémy alebo oprávnenia na migrácie.
 
 Lokálne príkazy:
 ```
