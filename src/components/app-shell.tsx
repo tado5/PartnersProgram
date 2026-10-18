@@ -124,13 +124,16 @@ export function AppShell({
   }
 
   const brand = companyName ? (
-    logoUrl ? <Image unoptimized src={logoUrl} alt={`Logo ${companyName}`} width={176} height={40}
-      className="h-10 w-full max-w-44 object-contain object-left" />
-      : <span className="block max-w-44 truncate font-bold tracking-tight text-stone-950" title={companyName}>{companyName}</span>
+    <span className="flex min-w-0 flex-col justify-center gap-0.5">
+      {logoUrl ? <Image unoptimized src={logoUrl} alt={`Logo ${companyName}`} width={176} height={32}
+        className="h-8 w-full max-w-44 object-contain object-left" />
+        : <span className="block max-w-44 truncate font-bold tracking-tight text-stone-950" title={companyName}>{companyName}</span>}
+      <span className="text-[10px] font-semibold leading-none tracking-wide text-white/65">PartnersProgram</span>
+    </span>
   ) : (
-    <span className="font-bold tracking-tight text-stone-950">
-      europodlahy<span className="text-amber-700">.</span>
-      {brandSuffix ? <span className="ml-1 text-xs font-medium text-stone-500">{brandSuffix}</span> : null}
+    <span className="font-bold tracking-tight text-white">
+      Partners<span className="text-primary">Program</span>
+      {brandSuffix ? <span className="ml-1 text-xs font-medium text-white/65">{brandSuffix}</span> : null}
     </span>
   );
 

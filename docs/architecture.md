@@ -53,7 +53,7 @@ Verzie Node.js závislostí sú pevne dané v `package-lock.json`; MariaDB image
 
 ## 5. Štruktúra projektu
 ```
-PartnersEuropodlahy/
+PartnersProgram/
 ├─ IMPLEMENTACNY_PLAN.md
 ├─ docs/                          táto dokumentácia
 ├─ src/

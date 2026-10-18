@@ -1,6 +1,6 @@
-# Europodlahy – Partnerský evidenčný systém
+# PartnersProgram – systém na správu partnerských programov
 
-Webová aplikácia na evidenciu partnerov, ich nákupov a získaných bodov. Technické a funkčné rozhodnutia sú v [implementačnom pláne](IMPLEMENTACNY_PLAN.md) a v priečinku [`docs/`](docs/).
+Viacfiremná webová aplikácia na správu oddelených partnerských programov, partnerov, nákupov a získaných bodov. Europodlahy je jedna z firiem využívajúcich aplikáciu. Technické a funkčné rozhodnutia sú v [implementačnom pláne](IMPLEMENTACNY_PLAN.md) a v priečinku [`docs/`](docs/).
 
 **Fázy 5A–10 implementované:** globálny superadmin spravuje firmy a vo výslovne vybranej firme používa admin funkcie. Admin a predavač patria jednej firme; používatelia, partneri, tokeny, nákupy a audit sú oddelené. Nákupový flow podporuje QR, NFC v kompatibilných prehliadačoch, ručné vyhľadanie, zápis a soft delete. Verejná karta, reporty a audit prehliadač sú dostupné; PDF report sa dá stiahnuť z reportov. CSV partnerov, nákupov, prehľadu a auditu je dostupné v **Exporty CSV** a priamo pri príslušných zoznamoch. Manuálna akceptácia fyzických zariadení, Excelu a produkčnej migrácie zostáva samostatným krokom.
 

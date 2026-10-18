@@ -3,8 +3,8 @@ import { env } from "@/lib/env";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Europodlahy | Partnerský program",
-  description: "Evidencia partnerov a vernostných bodov Europodlahy.",
+  title: "PartnersProgram | Partnerský program",
+  description: "Správa partnerských programov, partnerov, nákupov a vernostných bodov.",
   metadataBase: new URL(env.APP_BASE_URL),
 };
 

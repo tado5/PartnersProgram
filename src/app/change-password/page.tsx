@@ -19,8 +19,8 @@ export default async function ChangePasswordPage() {
       <div aria-hidden="true" className="pointer-events-none absolute -right-28 top-1/4 -z-10 size-[28rem] rounded-full bg-secondary/20 blur-[120px]" />
       <section aria-labelledby="change-password-title" className="data-surface w-full max-w-lg rounded-3xl p-6 shadow-[0_24px_80px_rgba(0,0,0,0.3)] sm:p-9">
         <div className="inline-flex items-center gap-3">
-          <span aria-hidden="true" className="flex size-10 items-center justify-center rounded-xl border border-white/20 bg-white/10 font-bold text-white">e</span>
-          <span className="font-semibold tracking-tight text-white">europodlahy<span className="text-primary">.</span></span>
+          <span aria-hidden="true" className="flex size-10 items-center justify-center rounded-xl border border-white/20 bg-white/10 font-bold text-white">P</span>
+          <span className="font-semibold tracking-tight text-white">Partners<span className="text-primary">Program</span></span>
         </div>
         <div className="mt-8 flex size-12 items-center justify-center rounded-2xl border border-primary/35 bg-primary/10 text-primary">
           <KeyRound aria-hidden="true" className="size-5" />

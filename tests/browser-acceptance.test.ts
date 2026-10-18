@@ -193,6 +193,29 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
       assert.match(await page.locator("main").getByRole("alert").innerText(), /nie sú platné/);
     });
 
+    await t.test("PartnersProgram branding is independent of company branding", async () => {
+      const page = await session(admin.email);
+      await page.locator("aside").getByText("PartnersProgram", { exact: true }).waitFor();
+      await page.goto(`${origin}/change-password`);
+      assert.match(await page.locator("body").innerText(), /PartnersProgram/);
+      assert.doesNotMatch(await page.locator("body").innerText(), /Europodlahy/i);
+      const publicContext = await browser.newContext();
+      contexts.push(publicContext);
+      await publicContext.route(`${origin}/**`, async (route) => {
+        const url = new URL(route.request().url());
+        const response = await route.fetch({ url: `${base}${url.pathname}${url.search}`, maxRedirects: 0 });
+        await route.fulfill({ response });
+      });
+      const publicPage = await publicContext.newPage();
+      await publicPage.goto(`${origin}/login`);
+      assert.match(await publicPage.locator("body").innerText(), /PartnersProgram/);
+      assert.doesNotMatch(await publicPage.locator("body").innerText(), /Europodlahy/i);
+      await publicPage.goto(`${origin}/`);
+      assert.equal(await publicPage.title(), "PartnersProgram | Partnerský program");
+      assert.match(await publicPage.locator("body").innerText(), /PartnersProgram/);
+      assert.doesNotMatch(await publicPage.locator("body").innerText(), /Europodlahy/i);
+    });
+
     await t.test("superadmin company switching removes previous-company audit", async () => {
       const page = await session(superadmin.email);
       await page.goto(`${origin}/superadmin/firmy`);
@@ -339,7 +362,9 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
       const page = await session(seller.email, true);
       await page.goto(`${origin}/app/nakupy/manualne`);
       await page.getByLabel("Vyhľadať partnera", { exact: true }).fill("Browser Alpha Partner");
-      await page.getByRole("link", { name: /Browser Alpha Partner/ }).tap();
+      await page.locator("main").getByRole("link", { name: /Browser Alpha Partner/ }).tap();
+      await page.waitForURL((url) => url.pathname === "/app/nakupy/novy");
+      await page.getByRole("heading", { name: "Browser Alpha Partner", exact: true }).waitFor();
       await page.getByLabel("Suma nákupu s DPH", { exact: false }).fill("19,99");
       await page.getByRole("radio", { name: "Áno", exact: true }).check();
       await page.getByRole("button", { name: "Uložiť nákup", exact: true }).tap();

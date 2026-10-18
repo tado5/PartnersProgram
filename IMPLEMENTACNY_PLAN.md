@@ -1,4 +1,4 @@
-# Europodlahy – Partnerský evidenčný systém
+# PartnersProgram – systém na správu partnerských programov
 ## Implementačný plán (MVP) – hlavný dokument
 
 > **Zdroj pravdy.** Pri rozpore s ostatnými dokumentmi platí tento súbor; rozpor sa musí opraviť v oboch.

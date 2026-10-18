@@ -130,7 +130,7 @@ function publicCardHtml(card: NonNullable<Awaited<ReturnType<typeof getPublicCar
         <p class="intro">Odkaz na kartu uchovávajte v súkromí. Osoba s odkazom môže vidieť údaje zobrazené na karte.</p>
         ${card.privacyUrl ? `<p><a href="${escapeHtml(card.privacyUrl)}">Ochrana osobných údajov</a></p>` : ""}
       </section>
-      <footer>Partnerský program · ${escapeHtml(new URL(env.APP_BASE_URL).host)}</footer>
+      <footer>PartnersProgram · Partnerský program</footer>
     </main>
   </body>
 </html>`;

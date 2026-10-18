@@ -108,7 +108,7 @@ components:
 
 Glassmorphism Application UI is a translucent, layered and vibrant interface system designed for a complete application rather than a marketing landing page.
 
-The style is intended for the Europodlahy partner application, including:
+The style is intended for the multi-company PartnersProgram application, including:
 
 - Dashboard overview
 - Sidebar and top navigation

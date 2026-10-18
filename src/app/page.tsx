@@ -38,13 +38,12 @@ export default function Home() {
       </div>
 
       <header className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4 py-5 sm:py-7">
-        <Link href="/" aria-label="Europodlahy, úvod" className="flex items-center gap-3">
+        <Link href="/" aria-label="PartnersProgram, úvod" className="flex items-center gap-3">
           <span aria-hidden="true" className="flex size-10 items-center justify-center rounded-xl border border-white/20 bg-white/10 text-lg font-bold text-white shadow-lg">
-            e
+            P
           </span>
           <span className="text-base font-semibold tracking-tight text-white sm:text-lg">
-            europodlahy<span className="text-primary">.</span>
-            <span className="ml-2 hidden text-sm font-normal text-white/65 sm:inline">partnerský program</span>
+            Partners<span className="text-primary">Program</span>
           </span>
         </Link>
         <Link
@@ -66,7 +65,7 @@ export default function Home() {
             Partnerstvo, ktoré má <span className="text-primary">prehľad.</span>
           </h1>
           <p className="mt-6 max-w-xl text-base leading-7 text-white/75 sm:text-lg sm:leading-8">
-            Vitajte v partnerskom programe Europodlahy. Jednoducho spravujte
+            Vitajte v aplikácii PartnersProgram. Jednoducho spravujte
             partnerov, evidujte nákupy a sledujte získané body.
           </p>
           <div className="mt-9 flex flex-col gap-3 sm:flex-row">
@@ -132,12 +131,12 @@ export default function Home() {
           ))}
         </ol>
         <footer className="mt-9 flex flex-wrap items-center justify-between gap-3 border-t border-white/12 pt-5 text-sm">
-          <p className="text-white/60">Evidencia partnerov a vernostných bodov Europodlahy.</p>
+          <p className="text-white/60">Správa partnerov a vernostných bodov pre viacero firiem.</p>
           <div className="flex flex-wrap items-center gap-5">
             <Link href="/gdpr" className="text-white/70 underline decoration-white/30 underline-offset-4 transition hover:text-white">
               Ochrana osobných údajov
             </Link>
-            <span className="text-white/45">© Europodlahy</span>
+            <span className="text-white/45">© PartnersProgram</span>
           </div>
         </footer>
       </section>

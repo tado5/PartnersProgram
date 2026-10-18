@@ -52,7 +52,7 @@ export async function renderReportPdf(input: {
     info: {
       Title: `${period.month ? "Mesačný report" : "Report za obdobie"} – ${periodLabel(period)}`,
       Author: input.companyName,
-      Creator: "Europodlahy – partnerský program",
+      Creator: "PartnersProgram – partnerský program",
     },
   });
   doc.registerFont("regular", FONT);

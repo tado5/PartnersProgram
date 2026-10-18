@@ -47,11 +47,10 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
       <header className="mx-auto flex w-full max-w-7xl items-center justify-between py-5 sm:py-7">
         <Link href="/" className="flex items-center gap-3">
           <span aria-hidden="true" className="flex size-10 items-center justify-center rounded-xl border border-white/20 bg-white/10 text-lg font-bold text-white">
-            e
+            P
           </span>
           <span className="font-semibold tracking-tight text-white">
-            europodlahy<span className="text-primary">.</span>
-            <span className="ml-2 hidden text-sm font-normal text-white/60 sm:inline">partnerský program</span>
+            Partners<span className="text-primary">Program</span>
           </span>
         </Link>
         <Link href="/" aria-label="Späť na úvod" className="inline-flex min-h-10 items-center gap-2 rounded-lg px-3 text-sm font-medium text-white/70 transition hover:bg-white/10 hover:text-white">
@@ -67,7 +66,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
             Váš partnerský program. Váš prehľad.
           </h2>
           <p className="mt-5 max-w-lg text-lg leading-8 text-white/70">
-            Prihláste sa do pracovného priestoru Europodlahy a pokračujte v správe programu.
+            Prihláste sa do aplikácie PartnersProgram a pokračujte v správe firemného programu.
           </p>
           <div className="glass-surface mt-9 flex max-w-md items-start gap-4 rounded-2xl p-5">
             <span className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-primary/35 bg-primary/10">
@@ -140,7 +139,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
       </div>
 
       <footer className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-3 border-t border-white/12 py-5 text-xs text-white/55">
-        <span>Europodlahy · Partnerský program</span>
+        <span>PartnersProgram · Partnerský program</span>
         <Link href="/gdpr" className="inline-flex items-center gap-1 underline decoration-white/30 underline-offset-4 hover:text-white">
           Ochrana osobných údajov <ArrowUpRight aria-hidden="true" className="size-3.5" />
         </Link>
