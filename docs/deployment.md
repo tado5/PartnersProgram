@@ -98,6 +98,11 @@ Aplikácia pri štarte validuje použité aplikačné premenné cez Zod. V produ
 `DATABASE_URL` je pre aplikáciu povinná. `MIGRATE_DATABASE_URL` a `SHADOW_DATABASE_URL` nie sú potrebné na spustenie aplikácie; vyžaduje ich konfigurácia Prisma pre databázové príkazy.
 
 ## 8. Build
+`npm run build` najprv spustí `npm run db:generate` a až po úspešnom
+vygenerovaní Prisma klienta spustí `next build`. Tento krok nemení databázu
+a nenahrádza migrácie. Na hostingu netreba samostatný krok `npm run db:generate`;
+pri inštalácii použite `npm install --include=dev`, aby boli dostupné aj build nástroje.
+
 Lokálne príkazy:
 ```
 npm ci → lint → typecheck → test → prisma generate → next build (output: standalone)
