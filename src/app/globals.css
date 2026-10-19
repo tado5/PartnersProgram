@@ -129,9 +129,31 @@ summary {
 
 :is(input, select, textarea)[aria-invalid="true"] {
   border-color: #fb7185 !important;
-  outline: 2px solid #fb7185;
-  outline-offset: 2px;
+  outline: none !important;
+  box-shadow: 0 0 0 2px #fb7185;
   scroll-margin-block: 6rem;
+}
+
+:is(input, select, textarea)[aria-invalid="true"]:not([class*="rounded-"]) {
+  border-radius: var(--radius-md);
+}
+
+input[type="radio"][aria-invalid="true"] {
+  border-radius: 50%;
+}
+
+input[type="checkbox"][aria-invalid="true"] {
+  border-radius: 0.25rem;
+}
+
+[data-validation-control]:has([aria-invalid="true"]) {
+  border-color: #fb7185 !important;
+  outline: none !important;
+  box-shadow: 0 0 0 2px #fb7185;
+}
+
+[data-validation-control] :is(input, select, textarea)[aria-invalid="true"] {
+  box-shadow: none;
 }
 
 ::selection {

@@ -160,6 +160,13 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
       assert.match(await summary.innerText(), /Dočasné heslo.*Vyplňte/);
       assert.equal(await page.evaluate(() => (document.activeElement as HTMLInputElement)?.name), "name");
       assert.equal(await create.locator('input[name="name"]').getAttribute("aria-invalid"), "true");
+      const invalidNameStyle = await create.locator('input[name="name"]').evaluate((element) => {
+        const style = getComputedStyle(element);
+        return { radius: style.borderRadius, shadow: style.boxShadow, outline: style.outlineStyle };
+      });
+      assert.notEqual(invalidNameStyle.radius, "0px");
+      assert.match(invalidNameStyle.shadow, /rgb\(251, 113, 133\)/);
+      assert.equal(invalidNameStyle.outline, "none");
       assert.equal(createRequests, 0);
 
       await create.locator('input[name="name"]').fill("A");
@@ -898,10 +905,27 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
         const settings = page.locator("section").filter({
           has: page.getByRole("heading", { name: "Logo firmy", exact: true }),
         }).last();
+        await settings.getByText("Vybrať logo firmy", { exact: true }).waitFor();
+        await settings.getByRole("button", { name: "Nahrať logo", exact: true }).click();
+        await settings.locator("[data-validation-summary]").waitFor();
+        const invalidPicker = await settings.locator("[data-validation-control]").evaluate((element) => {
+          const style = getComputedStyle(element);
+          return { radius: style.borderRadius, shadow: style.boxShadow, outline: style.outlineStyle };
+        });
+        assert.notEqual(invalidPicker.radius, "0px");
+        assert.match(invalidPicker.shadow, /rgb\(251, 113, 133\)/);
+        assert.equal(invalidPicker.outline, "none");
+        const chooser = page.waitForEvent("filechooser");
+        await settings.getByLabel("Vybrať logo", { exact: true }).click();
+        assert.equal((await chooser).isMultiple(), false);
         const png = await sharp({ create: { width: 800, height: 400, channels: 4, background: "#0d9488" } }).png().toBuffer();
         await settings.getByLabel("Vybrať logo", { exact: true }).setInputFiles({
           name: "test-logo.png", mimeType: "image/png", buffer: png,
         });
+        await settings.getByText("test-logo.png", { exact: true }).waitFor();
+        assert.equal(await settings.getByLabel("Vybrať logo", { exact: true }).getAttribute("aria-invalid"), null);
+        assert.equal(await settings.locator("[data-validation-control]").evaluate((element) => getComputedStyle(element).boxShadow), "none");
+        await settings.getByText("Súbor je vybraný.", { exact: false }).waitFor();
         await settings.getByRole("button", { name: "Nahrať logo", exact: true }).click();
         await settings.getByRole("status").waitFor();
         await page.locator("aside").getByRole("img", { name: "Logo Browser Alpha", exact: true }).waitFor();

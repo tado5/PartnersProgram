@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import { FileImage, Upload } from "lucide-react";
 
 import { useCompanyApi } from "@/components/company-context";
 import { ValidatedForm } from "@/components/validated-form";
@@ -16,6 +17,7 @@ export function CompanyLogoSettings({ logoUrl, companyName, readOnly }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [selectedFile, setSelectedFile] = useState<{ name: string; size: number } | null>(null);
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -54,10 +56,31 @@ export function CompanyLogoSettings({ logoUrl, companyName, readOnly }: {
         className="h-16 w-full max-w-48 object-contain object-left" /> : <strong className="break-words">{companyName}</strong>}
     </div>
     {!readOnly ? <ValidatedForm onSubmit={(event) => void save(event)} className="space-y-3">
-      <label className="block text-sm font-medium">Vybrať logo
-        <input className="mt-2 block w-full min-w-0 text-sm file:mr-3 file:rounded-md file:border file:border-stone-300 file:bg-white file:px-3 file:py-2"
-          type="file" name="file" accept="image/png,image/jpeg,image/webp" required disabled={busy} />
+      <label data-validation-control className={`relative flex min-h-36 min-w-0 flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-primary/50 bg-primary/5 p-5 text-center transition-colors focus-within:outline-2 focus-within:outline-offset-4 focus-within:outline-primary ${busy ? "opacity-60" : "cursor-pointer hover:border-primary hover:bg-primary/10"}`}>
+        <input className="absolute inset-0 h-full w-full cursor-pointer rounded-xl opacity-0 disabled:cursor-not-allowed"
+          aria-label="Vybrať logo" aria-describedby="company-logo-file-help"
+          type="file" name="file" accept="image/png,image/jpeg,image/webp" required disabled={busy}
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            setSelectedFile(file ? { name: file.name, size: file.size } : null);
+            setError("");
+            setMessage("");
+          }} />
+        <span className="flex size-11 items-center justify-center rounded-xl bg-primary/15 text-primary">
+          {selectedFile ? <FileImage aria-hidden className="size-6" /> : <Upload aria-hidden className="size-6" />}
+        </span>
+        <span className="block max-w-full min-w-0">
+          <span className="block break-all text-sm font-semibold text-white">
+            {selectedFile ? selectedFile.name : "Vybrať logo firmy"}
+          </span>
+          <span id="company-logo-file-help" className="mt-1 block text-xs text-white/65">
+            {selectedFile
+              ? `${new Intl.NumberFormat("sk-SK", { maximumFractionDigits: 1 }).format(selectedFile.size / 1024)} kB · Kliknutím vyberiete iný súbor`
+              : "Kliknite a vyberte obrázok · PNG, JPG alebo WebP do 2 MB"}
+          </span>
+        </span>
       </label>
+      {selectedFile ? <p className="text-xs text-white/65">Súbor je vybraný. Zmenu uložíte tlačidlom „Nahrať logo“.</p> : null}
       <div className="flex flex-wrap gap-3">
         <button disabled={busy} className="min-h-11 rounded-md bg-stone-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
           {busy ? "Ukladám…" : "Nahrať logo"}

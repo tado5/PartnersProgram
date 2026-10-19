@@ -1,5 +1,11 @@
 # Kompletný plán redizajnu UI
 
+## Odložené: veľkosť produkcie a nasadzovanie
+
+- [ ] **Optimalizácia miesta na hostingu** — tému zatiaľ odložiť; súčasné nasadzovanie nemeníme. Hosting sťahuje Git repozitár a vykonáva inštaláciu npm závislostí a build. Lokálne `.next`, `node_modules` a `.data` sú ignorované Gitom, preto sa pushom neprenášajú; skutočnú spotrebu hostingu treba zmerať samostatne.
+- [ ] **Overenie možností podpory hostingu** — zistiť, čo zaberá miesto (závislosti, build cache, staré nasadenia, logy), podporu nahratia hotového Next.js standalone balíka cez SSH/SFTP alebo nasadzovacie rozhranie a možnosť spustenia cez `node server.js` s reštartom aplikácie.
+- [ ] **Navrhované riešenie po potvrdení hostingu** — GitHub Actions vykoná kontroly a build kompatibilný s prostredím hostingu; nasadí sa iba standalone balík vrátane statických súborov, PDF fontov a potrebných Prisma súborov. Produkčné tajomstvá zostanú na hostingu; migrácie budú samostatným krokom. Zmerať výslednú veľkosť, overiť DB/prihlasovanie/PDF/statické súbory, uchovávanie starých verzií a rollback. Samotný presun buildu nestačí, ak hosting naďalej uchová plné závislosti a cache. Databázu, zálohy ani bežiaci build automaticky nemažeme.
+
 Plán vychádza z aktuálneho App Router projektu, obrazoviek v `docs/screens.md` a existujúcich komponentov. Redizajn zachová slovenské texty, role, routy, serverové guardy, API kontrakty a obchodné správanie. Farby a štýlové pravidlá v `docs/design.md` sú záväzné.
 
 ## Phase 0: Project analysis
