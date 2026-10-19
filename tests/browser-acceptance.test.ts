@@ -267,6 +267,32 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
       await noOverflow(page);
     });
 
+    await t.test("first and subsequent table and list dividers use the same subtle dark-theme color", async () => {
+      const page = await session(admin.email);
+      await page.goto(`${origin}/app/nakupy`);
+      for (const className of ["divide-stone-100", "divide-stone-200"]) {
+        await page.evaluate((variant) => {
+          document.getElementById("divider-regression-probe")?.remove();
+          const probe = document.createElement("div");
+          probe.id = "divider-regression-probe";
+          probe.innerHTML = `<table><tbody class="divide-y ${variant}"><tr><td>Prvý</td></tr><tr><td>Druhý</td></tr><tr><td>Tretí</td></tr></tbody></table><ul class="divide-y ${variant}"><li>Prvý</li><li>Druhý</li><li>Tretí</li></ul>`;
+          document.body.append(probe);
+        }, className);
+        const dividers = await page.locator("#divider-regression-probe :is(tr, li)").evaluateAll((elements) =>
+          elements.map((element) => {
+            const style = getComputedStyle(element);
+            return { color: style.borderBottomColor, width: style.borderBottomWidth };
+          }),
+        );
+        for (const divider of dividers) {
+          assert.equal(divider.color, "rgba(255, 255, 255, 0.12)", className);
+          assert.ok(divider.width === "0px" || divider.width === "1px");
+        }
+        assert.equal(dividers[0].width, "1px", "the first purchase separator must remain present");
+      }
+      await page.evaluate(() => document.getElementById("divider-regression-probe")?.remove());
+    });
+
     await t.test("legacy hover utilities retain translucent backgrounds and readable text in the dark theme", async () => {
       const page = await session(admin.email);
       await page.goto(`${origin}/app/partneri`);

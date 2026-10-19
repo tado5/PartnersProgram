@@ -53,7 +53,7 @@ export function CompanyForm({ company }: {
         <input className={inputClass} name="ico" onChange={() => setError("")}
           pattern="[0-9]{8}" maxLength={8} defaultValue={company?.ico ?? ""} />
       </label>
-      {!company ? <fieldset className="space-y-5 border-t pt-5">
+      {!company ? <fieldset className="space-y-5 border-t border-stone-200 pt-5">
         <legend className="font-semibold">Prvý admin</legend>
         <label className="block text-sm">Meno
           <input className={inputClass} name="admin.name" onChange={() => setError("")}

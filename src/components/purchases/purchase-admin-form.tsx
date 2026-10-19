@@ -139,7 +139,7 @@ export function PurchaseAdminForm({
                 {searchingPartners ? "Hľadám…" : "Vyhľadať"}
               </button>
             </div>
-            {partnerMatches.length ? <ul className="data-surface mt-2 divide-y overflow-hidden rounded-md">
+            {partnerMatches.length ? <ul className="data-surface mt-2 divide-y divide-stone-200 overflow-hidden rounded-md">
               {partnerMatches.map((match) => <li key={match.id}>
                 <button type="button" className="w-full p-2 text-left text-sm hover:bg-stone-50"
                   onClick={() => { setSelectedPartner(match); setPartnerMatches([]); }}>
