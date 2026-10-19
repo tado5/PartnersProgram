@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useCompanyApi } from "@/components/company-context";
 import { ValidatedForm } from "@/components/validated-form";
@@ -23,6 +23,8 @@ export function PartnerPrivacy({ partnerId, companySlug, receipts, notices, read
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [addingReceipt, setAddingReceipt] = useState(false);
+  const formId = useId();
   const notice = notices.find((item) => item.id === noticeId);
   const date = (value: string) => new Intl.DateTimeFormat("sk-SK", {
     dateStyle: "medium", timeStyle: "medium", timeZone,
@@ -44,6 +46,7 @@ export function PartnerPrivacy({ partnerId, companySlug, receipts, notices, read
         return;
       }
       form.reset();
+      setAddingReceipt(false);
       setMessage("Poskytnutie informácií bolo zaznamenané.");
       router.refresh();
     } catch {
@@ -66,21 +69,36 @@ export function PartnerPrivacy({ partnerId, companySlug, receipts, notices, read
         {receipt.reason ? <p className="mt-1 break-words">Dôvod: {receipt.reason}</p> : null}
       </li>)}
     </ol> : null}
-    {!readOnly && notice ? <ValidatedForm onSubmit={(event) => void submit(event)} className="mt-5 max-w-xl space-y-3">
-      <fieldset disabled={busy} className="min-w-0 space-y-3">
-        <label className="block text-sm font-medium">Verzia poskytnutého oznámenia
-          <select name="noticeId" required value={noticeId} onChange={(event) => setNoticeId(event.target.value)}
-            className="mt-1 block w-full rounded-md border border-stone-300 bg-white px-3 py-2">
-            {notices.map((item) => <option key={item.id} value={item.id}>Verzia {item.version}</option>)}
-          </select>
-        </label>
-        <PrivacyReceiptFields key={noticeId} version={notice.version}
-          noticeUrl={`/ochrana-udajov/${companySlug}?version=${notice.version}`} correction={receipts.length > 0} />
-        <button className="rounded-md bg-stone-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
-          Zaznamenať poskytnutie
+    {!readOnly && notice ? <>
+      {receipts.length > 0 ? <div className="mt-5">
+        <p className="text-sm text-stone-600">
+          Informovanie je už zaevidované. Ďalší záznam pridajte iba pri opätovnom poskytnutí alebo oprave; pôvodná evidencia zostane zachovaná.
+        </p>
+        <button type="button" aria-expanded={addingReceipt} aria-controls={formId}
+          disabled={busy}
+          className="mt-3 min-h-11 rounded-md border border-stone-300 px-4 py-2 text-sm font-semibold disabled:opacity-50"
+          onClick={() => { setAddingReceipt(!addingReceipt); setError(""); setMessage(""); }}>
+          {addingReceipt ? "Zrušiť pridávanie záznamu" : "Zaznamenať ďalšie poskytnutie / opravu"}
         </button>
-      </fieldset>
-    </ValidatedForm> : <p className="mt-4 text-sm text-stone-600">
+      </div> : null}
+      <div id={formId} hidden={receipts.length > 0 && !addingReceipt}>
+        {receipts.length === 0 || addingReceipt ? <ValidatedForm onSubmit={(event) => void submit(event)} className="mt-5 max-w-xl space-y-3">
+          <fieldset disabled={busy} className="min-w-0 space-y-3">
+            <label className="block text-sm font-medium">Verzia poskytnutého oznámenia
+              <select name="noticeId" required value={noticeId} onChange={(event) => setNoticeId(event.target.value)}
+                className="mt-1 block w-full rounded-md border border-stone-300 bg-white px-3 py-2">
+                {notices.map((item) => <option key={item.id} value={item.id}>Verzia {item.version}</option>)}
+              </select>
+            </label>
+            <PrivacyReceiptFields key={noticeId} version={notice.version}
+              noticeUrl={`/ochrana-udajov/${companySlug}?version=${notice.version}`} correction={receipts.length > 0} />
+            <button className="rounded-md bg-stone-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+              Zaznamenať poskytnutie
+            </button>
+          </fieldset>
+        </ValidatedForm> : null}
+      </div>
+    </> : <p className="mt-4 text-sm text-stone-600">
       {readOnly ? "Superadmin môže evidenciu iba prezerať." : "Najprv publikujte oznámenie v nastaveniach firmy."}
     </p>}
     {error ? <p role="alert" className="mt-3 text-sm text-red-700">{error}</p> : null}

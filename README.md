@@ -12,6 +12,8 @@ Viacfiremná webová aplikácia na správu oddelených partnerských programov, 
 
 **Validácia formulárov:** neplatné polia sa po opustení alebo odoslaní označia a zobrazí sa slovenský zoznam chýb s názvami polí. Odoslanie presunie používateľa na prvú chybu; položka v zozname umožní návrat na konkrétne pole aj na mobile. Serverové validačné chyby zobrazujú konkrétne polia namiesto samotného všeobecného upozornenia. Povinný dôvod či potvrdenie sa vysvetlí pri pokuse o akciu; tlačidlá zostávajú blokované počas spracovania. Pravidlá overovania na serveri zostávajú zachované.
 
+**Detail partnera:** po údajoch partnera nasledujú mesačné ocenenia, QR/NFC tokeny, nákupy, evidencia informovania o spracúvaní údajov a nakoniec audit. Pri existujúcej evidencii informovania je formulár skrytý za tlačidlom **Zaznamenať ďalšie poskytnutie / opravu**; nový záznam pôvodnú históriu neprepisuje. Ak evidencia ešte chýba, formulár zostáva otvorený.
+
 ## Požiadavky
 
 - Docker Desktop s Docker Compose

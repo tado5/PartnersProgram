@@ -745,6 +745,19 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
         await history.getByText("Zaznamenal: Browser Alpha Admin", { exact: false }).waitFor();
         assert.equal(await history.locator("ol > li").count(), 1);
         assert.match(await history.locator("ol").innerText(), /V tlačenej podobe|Verzia 1/);
+        const sectionHeadings = await page.locator("main h2").allTextContents();
+        const orderedHeadings = ["Mesačné ocenenia", "QR a NFC tokeny", "Nákupy", "Informovanie o spracúvaní údajov", "Audit partnera"];
+        const positions = orderedHeadings.map((heading) => sectionHeadings.indexOf(heading));
+        assert.ok(positions.every((position, index) => position >= 0 && (index === 0 || position > positions[index - 1])),
+          `Partner sections must follow the requested order: ${sectionHeadings.join(", ")}`);
+        const addReceipt = history.getByRole("button", { name: "Zaznamenať ďalšie poskytnutie / opravu", exact: true });
+        assert.equal(await addReceipt.getAttribute("aria-expanded"), "false");
+        assert.equal(await history.locator("form").count(), 0);
+        await addReceipt.click();
+        assert.equal(await history.locator("form").count(), 1);
+        await history.getByRole("button", { name: "Zrušiť pridávanie záznamu", exact: true }).click();
+        assert.equal(await history.locator("form").count(), 0);
+        await addReceipt.click();
         await history.locator('select[name="privacyMethod"]').selectOption("email");
         await history.locator('input[name="privacyProvidedAt"]').fill(localTime);
         await history.locator('input[name="privacyConfirmed"]').check();
@@ -757,6 +770,8 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
         assert.equal((await appended).status(), 201);
         await history.getByText("Dôvod: Browser additional email informing", { exact: true }).waitFor();
         assert.equal(await history.locator("ol > li").count(), 2);
+        assert.equal(await history.locator("form").count(), 0);
+        assert.equal(await addReceipt.getAttribute("aria-expanded"), "false");
         assert.deepEqual(await prisma.companyPrivacyReceipt.findUniqueOrThrow({ where: { id: receipt.id } }), receipt);
         await noOverflow(page);
 

@@ -125,21 +125,6 @@ export default async function PartnerDetailPage({
           updatedAt: partner.updatedAt.toISOString(),
         }}
       />
-      <PartnerPrivacy partnerId={partner.id.toString()} companySlug={context.company.slug}
-        receipts={privacyReceipts} notices={privacyNotices.map((notice) => ({ ...notice, id: notice.id.toString() }))}
-        readOnly={context.user.role !== "admin"} timeZone={env.APP_TIMEZONE} />
-      <PartnerTokenManager
-        partnerId={partner.id.toString()}
-        partnerName={partner.displayName}
-        partnerCode={partner.code}
-        initialTokens={tokens.map((token) => ({
-          ...token,
-          id: token.id.toString(),
-          createdAt: token.createdAt.toISOString(),
-          deactivatedAt: token.deactivatedAt?.toISOString() ?? null,
-          lastUsedAt: token.lastUsedAt?.toISOString() ?? null,
-        }))}
-      />
       <section className="glass-surface mt-8 rounded-xl p-5">
         <h2 className="text-xl font-semibold text-white">Mesačné ocenenia</h2>
         <p className="mt-2 text-stone-700">
@@ -164,16 +149,18 @@ export default async function PartnerDetailPage({
           </ol>
         ) : <p className="mt-4 text-sm text-stone-600">Zatiaľ bez uzavretých mesačných ocenení.</p>}
       </section>
-      <section className="mt-8">
-        <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-          <h2 className="text-xl font-semibold">Audit partnera</h2>
-          <CsvExportForm kind="audit-logs" query={`partnerId=${partner.id}`} />
-        </div>
-        <AuditEntryList items={auditItems} />
-        {auditEntries.length === 50 ? (
-          <Link href={`/app/audit?partnerId=${partner.id.toString()}`} className="mt-3 inline-block text-sm text-amber-800 underline">Zobraziť v audite firmy</Link>
-        ) : null}
-      </section>
+      <PartnerTokenManager
+        partnerId={partner.id.toString()}
+        partnerName={partner.displayName}
+        partnerCode={partner.code}
+        initialTokens={tokens.map((token) => ({
+          ...token,
+          id: token.id.toString(),
+          createdAt: token.createdAt.toISOString(),
+          deactivatedAt: token.deactivatedAt?.toISOString() ?? null,
+          lastUsedAt: token.lastUsedAt?.toISOString() ?? null,
+        }))}
+      />
       <section className="mt-8">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
@@ -210,6 +197,19 @@ export default async function PartnerDetailPage({
           }))}
         />
         {purchaseCount > purchases.length ? <Link href={`/app/nakupy?partnerId=${partner.id.toString()}`} className="mt-3 inline-block text-sm text-amber-800 underline">Zobraziť ďalšie</Link> : null}
+      </section>
+      <PartnerPrivacy partnerId={partner.id.toString()} companySlug={context.company.slug}
+        receipts={privacyReceipts} notices={privacyNotices.map((notice) => ({ ...notice, id: notice.id.toString() }))}
+        readOnly={context.user.role !== "admin"} timeZone={env.APP_TIMEZONE} />
+      <section className="mt-8">
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+          <h2 className="text-xl font-semibold">Audit partnera</h2>
+          <CsvExportForm kind="audit-logs" query={`partnerId=${partner.id}`} />
+        </div>
+        <AuditEntryList items={auditItems} />
+        {auditEntries.length === 50 ? (
+          <Link href={`/app/audit?partnerId=${partner.id.toString()}`} className="mt-3 inline-block text-sm text-amber-800 underline">Zobraziť v audite firmy</Link>
+        ) : null}
       </section>
     </div>
   );
