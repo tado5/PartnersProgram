@@ -183,14 +183,19 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
       await noOverflow(page);
 
       await page.goto(`${origin}/app/nakupy/novy?partner=${partner.id}&source=manual`);
+      const presentYes = page.locator('input[name="partnerPresent"][value="yes"]');
+      const presentNo = page.locator('input[name="partnerPresent"][value="no"]');
+      assert.equal(await presentYes.isChecked(), true);
+      assert.equal(await presentNo.isChecked(), false);
+      await presentNo.check();
+      assert.equal(await presentYes.isChecked(), false);
+      assert.equal(await presentNo.isChecked(), true);
       await page.getByRole("button", { name: "Uložiť nákup", exact: true }).click();
       const purchaseErrors = page.locator("[data-validation-summary]");
       await purchaseErrors.waitFor();
       assert.match(await purchaseErrors.innerText(), /Suma nákupu/);
-      assert.match(await purchaseErrors.innerText(), /Partner bol prítomný/);
-      assert.equal(await purchaseErrors.locator("li").count(), 2, "required radio group should produce one error");
-      await purchaseErrors.getByRole("button", { name: /Partner bol prítomný/ }).click();
-      assert.equal(await page.evaluate(() => (document.activeElement as HTMLInputElement)?.name), "partnerPresent");
+      assert.doesNotMatch(await purchaseErrors.innerText(), /Partner bol prítomný/);
+      assert.equal(await purchaseErrors.locator("li").count(), 1, "partner presence already has a valid selection");
       await noOverflow(page);
 
       let purchaseRequests = 0;

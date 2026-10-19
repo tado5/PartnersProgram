@@ -32,7 +32,7 @@ export function PurchaseForm({
   const { companyFetch } = useCompanyApi();
   const idempotencyKey = useRef<string | null>(null);
   const [amount, setAmount] = useState("");
-  const [partnerPresent, setPartnerPresent] = useState("");
+  const [partnerPresent, setPartnerPresent] = useState("yes");
   const [note, setNote] = useState("");
   const [purchasedAt, setPurchasedAt] = useState(initialDate);
   const [confirmationRequired, setConfirmationRequired] = useState(false);
