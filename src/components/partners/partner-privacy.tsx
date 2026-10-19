@@ -3,6 +3,8 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useCompanyApi } from "@/components/company-context";
+import { ValidatedForm } from "@/components/validated-form";
+import { formatApiError } from "@/lib/validation-errors";
 import { PrivacyReceiptFields, privacyPayload } from "./privacy-receipt-fields";
 
 type Receipt = {
@@ -38,7 +40,7 @@ export function PartnerPrivacy({ partnerId, companySlug, receipts, notices, read
       });
       if (!response.ok) {
         const result = await response.json();
-        setError(result.error?.message ?? "Poskytnutie informácií sa nepodarilo zaznamenať.");
+        setError(formatApiError(result.error, "Poskytnutie informácií sa nepodarilo zaznamenať."));
         return;
       }
       form.reset();
@@ -64,10 +66,10 @@ export function PartnerPrivacy({ partnerId, companySlug, receipts, notices, read
         {receipt.reason ? <p className="mt-1 break-words">Dôvod: {receipt.reason}</p> : null}
       </li>)}
     </ol> : null}
-    {!readOnly && notice ? <form onSubmit={(event) => void submit(event)} className="mt-5 max-w-xl space-y-3">
+    {!readOnly && notice ? <ValidatedForm onSubmit={(event) => void submit(event)} className="mt-5 max-w-xl space-y-3">
       <fieldset disabled={busy} className="min-w-0 space-y-3">
         <label className="block text-sm font-medium">Verzia poskytnutého oznámenia
-          <select value={noticeId} onChange={(event) => setNoticeId(event.target.value)}
+          <select name="noticeId" required value={noticeId} onChange={(event) => setNoticeId(event.target.value)}
             className="mt-1 block w-full rounded-md border border-stone-300 bg-white px-3 py-2">
             {notices.map((item) => <option key={item.id} value={item.id}>Verzia {item.version}</option>)}
           </select>
@@ -78,7 +80,7 @@ export function PartnerPrivacy({ partnerId, companySlug, receipts, notices, read
           Zaznamenať poskytnutie
         </button>
       </fieldset>
-    </form> : <p className="mt-4 text-sm text-stone-600">
+    </ValidatedForm> : <p className="mt-4 text-sm text-stone-600">
       {readOnly ? "Superadmin môže evidenciu iba prezerať." : "Najprv publikujte oznámenie v nastaveniach firmy."}
     </p>}
     {error ? <p role="alert" className="mt-3 text-sm text-red-700">{error}</p> : null}

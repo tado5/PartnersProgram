@@ -5,6 +5,8 @@ import { useState, type FormEvent } from "react";
 
 import { refreshPartnerViews } from "@/app/app/partneri/actions";
 import { useCompanyApi } from "@/components/company-context";
+import { ValidatedForm } from "@/components/validated-form";
+import { formatApiError } from "@/lib/validation-errors";
 import { PrivacyReceiptFields, privacyPayload } from "./privacy-receipt-fields";
 
 type PartnerValues = {
@@ -65,7 +67,7 @@ export function PartnerForm({
         setDuplicates(body.error.matches);
         setPendingPayload(payload);
       } else {
-        setError(body.error?.message ?? "Partnera sa nepodarilo uložiť.");
+        setError(formatApiError(body.error, "Partnera sa nepodarilo uložiť."));
       }
       setPending(false);
       return;
@@ -86,7 +88,7 @@ export function PartnerForm({
     if (!partner && privacyNotice) {
       const privacy = privacyPayload(data, privacyNotice.id);
       if (!privacy) { setError("Vyplňte platný dátum a čas poskytnutia oznámenia."); return; }
-      for (const field of ["privacyMethod", "privacyProvidedAt", "privacyConfirmed"]) delete payload[field];
+      for (const field of ["privacyMethod", "privacyProvidedAt", "privacyConfirmed", "privacyReason"]) delete payload[field];
       payload.privacy = privacy;
     }
     if (partner) {
@@ -98,7 +100,7 @@ export function PartnerForm({
   }
 
   return (
-    <form className="data-surface space-y-5 rounded-xl p-5 sm:p-7" onSubmit={submit}>
+    <ValidatedForm className="data-surface space-y-5 rounded-xl p-5 sm:p-7" onSubmit={submit}>
       {partner ? (
         <div className="rounded-md bg-stone-50 px-4 py-3 text-sm text-stone-700">
           Kód partnera: <strong>{partner.code}</strong> (nemeniteľný)
@@ -229,6 +231,6 @@ export function PartnerForm({
           Zrušiť
         </button>
       </div>
-    </form>
+    </ValidatedForm>
   );
 }

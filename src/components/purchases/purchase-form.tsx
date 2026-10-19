@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useRef, useState, type FormEvent } from "react";
+import { useRef, useState, type SubmitEvent } from "react";
 
 import { useCompanyApi } from "@/components/company-context";
+import { ValidatedForm } from "@/components/validated-form";
 import { dateTimeInputInZoneToIso } from "@/lib/dates";
 import { netAmountFromGross, pointsForAmount } from "@/lib/purchases";
+import { formatApiError } from "@/lib/validation-errors";
 
 type PurchaseSuccess = {
   id: string; amount: string; netAmount: string; vatAmount: string;
@@ -76,7 +78,7 @@ export function PurchaseForm({
         setConfirmationRequired(true);
         return;
       }
-      if (!response.ok) throw new Error(body.error?.message ?? "Nákup sa nepodarilo uložiť.");
+      if (!response.ok) throw new Error(formatApiError(body.error, "Nákup sa nepodarilo uložiť."));
       setSuccess(body.purchase);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Požiadavku sa nepodarilo dokončiť.");
@@ -85,7 +87,7 @@ export function PurchaseForm({
     }
   }
 
-  function submit(event: FormEvent<HTMLFormElement>) {
+  function submit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     void save(confirmedAmount);
   }
@@ -114,20 +116,30 @@ export function PurchaseForm({
   const preview = validAmount ? netAmountFromGross(amount.replace(",", "."), vatRatePercent) : null;
   const pointsPreview = preview ? pointsForAmount(preview.netAmount) : null;
   return (
-    <form aria-busy={pending} onSubmit={submit} className="data-surface rounded-xl p-5 sm:p-6">
+    <ValidatedForm aria-busy={pending} onSubmit={submit} className="data-surface rounded-xl p-5 sm:p-6">
       <div className="grid gap-5 sm:grid-cols-2">
         <label className="block text-sm font-medium text-stone-700">
           Suma nákupu s DPH (€)
           <input
             className={inputClass}
             type="text"
+            name="amount"
             inputMode="decimal"
             autoComplete="off"
             required
             pattern="\d{1,6}([.,]\d{1,2})?"
             maxLength={10}
             value={amount}
-            onChange={(event) => { changed(); setAmount(event.target.value); }}
+            onChange={(event) => {
+              const value = event.target.value;
+              const matchesAmountPattern = /^\d{1,6}(?:[.,]\d{1,2})?$/.test(value.trim());
+              const numericAmount = Number(value.trim().replace(",", "."));
+              event.currentTarget.setCustomValidity(
+                matchesAmountPattern && numericAmount <= 0 ? "Suma nákupu musí byť väčšia ako 0 €." : "",
+              );
+              changed();
+              setAmount(value);
+            }}
             placeholder="0,00"
           />
           <span className="mt-1 block text-xs font-normal text-stone-500">
@@ -149,13 +161,13 @@ export function PurchaseForm({
         </fieldset>
         <label className="block text-sm font-medium text-stone-700">
           Dátum a čas nákupu
-          <input className={inputClass} type="datetime-local" required value={purchasedAt}
+          <input className={inputClass} type="datetime-local" name="purchasedAt" required value={purchasedAt}
             onChange={(event) => { changed(); setPurchasedAt(event.target.value); }} />
           <span className="mt-1 block text-xs font-normal text-stone-500">Predvolene aktuálny čas; dátum možno upraviť pri zápise.</span>
         </label>
         <label className="block text-sm font-medium text-stone-700">
           Interná poznámka (nepovinné)
-          <textarea className={inputClass} maxLength={500} rows={2} value={note}
+          <textarea className={inputClass} name="note" maxLength={500} rows={2} value={note}
             onChange={(event) => { changed(); setNote(event.target.value); }} />
         </label>
       </div>
@@ -171,19 +183,20 @@ export function PurchaseForm({
             Suma dosahuje firemný limit {confirmationLimit} €. Potvrďte, že chcete tento nákup zapísať.
           </p>
           <label className="mt-3 flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={confirmedAmount} onChange={(event) => setConfirmedAmount(event.target.checked)} />
+            <input type="checkbox" name="highAmountConfirmed"
+              required checked={confirmedAmount} onChange={(event) => { setError(""); setConfirmedAmount(event.target.checked); }} />
             Potvrdzujem správnosť sumy a zápisu
           </label>
         </div>
       ) : null}
       {error ? <p role="alert" className="mt-4 text-sm text-red-700">{error}</p> : null}
       <div className="mt-5 flex flex-wrap gap-3">
-        <button className={primaryButton} disabled={pending || (confirmationRequired && !confirmedAmount)}>
+        <button className={primaryButton} type="submit" disabled={pending}>
           {pending ? "Ukladám…" : confirmationRequired ? "Potvrdiť a uložiť nákup" : "Uložiť nákup"}
         </button>
         <Link className={secondaryButton} href="/app/sken">Zrušiť</Link>
       </div>
-    </form>
+    </ValidatedForm>
   );
 }
 

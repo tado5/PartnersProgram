@@ -2,6 +2,8 @@
 
 import { signOut } from "next-auth/react";
 import { useState, type FormEvent } from "react";
+import { ValidatedForm } from "@/components/validated-form";
+import { formatApiError } from "@/lib/validation-errors";
 
 export function ChangePasswordForm() {
   const [error, setError] = useState("");
@@ -26,7 +28,7 @@ export function ChangePasswordForm() {
       const result = (await response.json()) as {
         error?: { message?: string };
       };
-      setError(result.error?.message ?? "Heslo sa nepodarilo zmeniť.");
+      setError(formatApiError(result.error, "Heslo sa nepodarilo zmeniť."));
       setIsSubmitting(false);
       return;
     }
@@ -35,13 +37,14 @@ export function ChangePasswordForm() {
   }
 
   return (
-    <form aria-busy={isSubmitting} className="mt-8 space-y-5" onSubmit={handleSubmit}>
+    <ValidatedForm aria-busy={isSubmitting} className="mt-8 space-y-5" onSubmit={handleSubmit}>
       <label className="block text-sm font-medium text-stone-700">
         Súčasné heslo
         <input
           autoComplete="current-password"
           className="mt-2 block w-full rounded-md border border-stone-300 px-3 py-2.5 outline-none focus:border-amber-700 focus:ring-2 focus:ring-amber-100"
           name="currentPassword"
+          maxLength={128}
           required
           type="password"
         />
@@ -52,6 +55,7 @@ export function ChangePasswordForm() {
           autoComplete="new-password"
           className="mt-2 block w-full rounded-md border border-stone-300 px-3 py-2.5 outline-none focus:border-amber-700 focus:ring-2 focus:ring-amber-100"
           minLength={10}
+          maxLength={128}
           name="newPassword"
           required
           type="password"
@@ -70,6 +74,6 @@ export function ChangePasswordForm() {
       >
         Zmeniť heslo
       </button>
-    </form>
+    </ValidatedForm>
   );
 }

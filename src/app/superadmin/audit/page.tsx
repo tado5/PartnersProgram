@@ -6,6 +6,7 @@ import { zonedCalendarDayRange } from "@/lib/dates";
 import { auditActionLabels, AUDIT_PAGE_SIZE } from "@/lib/audit";
 import { AuditDateBadges, AuditEntityBadge } from "@/components/audit/audit-badges";
 import { parseUserId } from "@/server/auth/http";
+import { ValidatedForm } from "@/components/validated-form";
 
 export default async function SuperadminAuditPage({ searchParams }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -74,7 +75,7 @@ export default async function SuperadminAuditPage({ searchParams }: {
     <section>
       <h1 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">Platformový audit</h1>
       <p className="mt-1 text-sm leading-6 text-white/70">Prezeranie platformových udalostí a auditovaných zásahov superadmina v konkrétnej firme.</p>
-      <form className="glass-surface my-4 grid gap-x-3 gap-y-2 rounded-xl p-3 sm:grid-cols-2 lg:grid-cols-4 [&_label]:min-w-0 [&_label]:text-xs [&_input]:min-w-0 [&_input]:min-h-10 [&_input]:py-1.5 [&_input]:text-sm [&_select]:min-w-0 [&_select]:min-h-10 [&_select]:py-1.5 [&_select]:text-sm">
+      <ValidatedForm className="glass-surface my-4 grid gap-x-3 gap-y-2 rounded-xl p-3 sm:grid-cols-2 lg:grid-cols-4 [&_label]:min-w-0 [&_label]:text-xs [&_input]:min-w-0 [&_input]:min-h-10 [&_input]:py-1.5 [&_input]:text-sm [&_select]:min-w-0 [&_select]:min-h-10 [&_select]:py-1.5 [&_select]:text-sm">
         <label className="text-sm font-medium text-stone-700">
           Rozsah
           <select className="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2" name="companyId" defaultValue={companyInput}>
@@ -93,7 +94,7 @@ export default async function SuperadminAuditPage({ searchParams }: {
         <div className="flex items-end">
           <button className="rounded-md bg-stone-950 px-4 py-2 text-sm font-semibold text-white">Filtrovať</button>
         </div>
-      </form>
+      </ValidatedForm>
 
       <p className="mb-2 text-xs text-stone-600">Záznamy {total ? `${(page - 1) * AUDIT_PAGE_SIZE + 1}–${Math.min(page * AUDIT_PAGE_SIZE, total)} z ${total}` : "0"} · strana {page} z {pageCount}</p>
       <ol aria-label="Platformové záznamy auditu" className="data-surface divide-y divide-stone-200 overflow-hidden rounded-xl">

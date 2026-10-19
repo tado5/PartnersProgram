@@ -3,6 +3,7 @@
 import { getSession, signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import { ValidatedForm } from "@/components/validated-form";
 
 export function LoginForm({
   callbackUrl,
@@ -66,7 +67,7 @@ export function LoginForm({
 
   return (
     <>
-      <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
+      <ValidatedForm className="mt-8 space-y-5" onSubmit={handleSubmit}>
         <label className="block text-sm font-medium text-stone-700">
           E-mail
           <input
@@ -99,7 +100,7 @@ export function LoginForm({
         >
           {isSubmitting ? "Prihlasujem…" : "Prihlásiť sa"}
         </button>
-      </form>
+      </ValidatedForm>
       {showLocalQuickLogin ? (
         <>
           <form

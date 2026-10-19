@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 
 import { useCompanyApi } from "@/components/company-context";
 import { PartnerTypeBadge, type PartnerTypeValue } from "@/components/partners/partner-type-badge";
+import { formatApiError } from "@/lib/validation-errors";
 
 type PartnerMatch = {
   id: string;
@@ -50,7 +51,7 @@ export function PartnerPicker() {
     try {
       const response = await companyFetch(`/api/partners?${params}`, { cache: "no-store", signal });
       const body = await response.json();
-      if (!response.ok) return { items: [], total: 0, error: body.error?.message ?? "Vyhľadávanie zlyhalo." };
+      if (!response.ok) return { items: [], total: 0, error: formatApiError(body.error, "Vyhľadávanie zlyhalo.") };
       return { items: body.items as PartnerMatch[], total: body.total as number, error: "" };
     } catch {
       if (signal?.aborted) return null;
@@ -84,6 +85,7 @@ export function PartnerPicker() {
           autoFocus
           className="block min-h-12 w-full rounded-lg border border-stone-300 bg-white py-3 pl-11 pr-3 text-base"
           id="partner-picker-search"
+          name="q"
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Meno, telefón, IČO alebo kód"
           type="search"

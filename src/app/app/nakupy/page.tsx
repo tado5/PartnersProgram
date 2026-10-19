@@ -10,6 +10,7 @@ import { parseUserId } from "@/server/auth/http";
 import { requireCompanyPage } from "@/server/auth/session";
 import { listPurchases } from "@/server/purchases";
 import { notFound } from "next/navigation";
+import { ValidatedForm } from "@/components/validated-form";
 
 export default async function PurchasesPage({
   searchParams,
@@ -85,7 +86,7 @@ export default async function PurchasesPage({
         </div>
       </div>
       {context.user.role !== "seller" ? (
-        <form method="get" className="glass-surface mt-6 flex flex-wrap items-end gap-3 rounded-xl p-4">
+        <ValidatedForm method="get" className="glass-surface mt-6 flex flex-wrap items-end gap-3 rounded-xl p-4">
           {partnerId ? <input type="hidden" name="partnerId" value={partnerId.toString()} /> : null}
           {includeDeleted ? <input type="hidden" name="includeDeleted" value="true" /> : null}
           <label className="block text-sm font-medium text-stone-700">
@@ -98,7 +99,7 @@ export default async function PurchasesPage({
           </label>
           <button className="min-h-11 rounded-md bg-stone-950 px-4 py-2 text-sm font-semibold text-white">Filtrovať</button>
           {from || to ? <Link className="min-h-11 py-3 text-sm font-medium text-amber-800 underline" href={`/app/nakupy${partnerId || includeDeleted ? `?${new URLSearchParams({ ...(partnerId ? { partnerId: partnerId.toString() } : {}), ...(includeDeleted ? { includeDeleted: "true" } : {}) })}` : ""}`}>Zrušiť dátumy</Link> : null}
-        </form>
+        </ValidatedForm>
       ) : null}
       <PurchaseHistory
         items={result.items} role={role} includeDeleted={includeDeleted} total={result.total}

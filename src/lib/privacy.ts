@@ -33,7 +33,7 @@ export const privacyReceiptSchema = z.strictObject({
     BigInt(value) > BigInt(0) && BigInt(value) <= BigInt("18446744073709551615")),
   providedAt: z.iso.datetime(),
   method: z.enum(["in_person", "printed", "email"]),
-  reason: nullableText(255).refine((value) => value === null || value.length >= 2),
+  reason: nullableText(255).refine((value) => value === null || value.length >= 2, "Dôvod musí mať aspoň 2 znaky."),
 });
 
 export type PrivacyDraftInput = z.infer<typeof privacyDraftSchema>;

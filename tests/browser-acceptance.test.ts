@@ -136,6 +136,125 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
       entityId: otherPartner.id, partnerId: otherPartner.id, newValues: { displayName: "Browser Beta Secret" },
     } });
 
+    await t.test("mobile validation identifies fields, prevents invalid requests and preserves server details", async () => {
+      const page = await session(admin.email, true);
+      await page.goto(`${origin}/app/users`);
+      const create = page.locator("form").filter({ has: page.locator('input[name="name"]') });
+      let createRequests = 0;
+      await page.route("**/api/users", async (route) => {
+        if (route.request().method() !== "POST") return route.continue();
+        createRequests++;
+        await route.fulfill({
+          status: 400, contentType: "application/json",
+          body: JSON.stringify({ error: {
+            code: "VALIDATION_ERROR", message: "Skontrolujte zadané údaje.",
+            fields: [{ field: "email", message: "Zadajte platnú e-mailovú adresu." }],
+          } }),
+        });
+      });
+      await create.getByRole("button", { name: "Vytvoriť účet", exact: true }).click();
+      const summary = create.locator("[data-validation-summary]");
+      await summary.waitFor();
+      assert.match(await summary.innerText(), /Meno:.*Vyplňte/);
+      assert.match(await summary.innerText(), /E-mail:.*Vyplňte/);
+      assert.match(await summary.innerText(), /Dočasné heslo.*Vyplňte/);
+      assert.equal(await page.evaluate(() => (document.activeElement as HTMLInputElement)?.name), "name");
+      assert.equal(await create.locator('input[name="name"]').getAttribute("aria-invalid"), "true");
+      assert.equal(createRequests, 0);
+
+      await create.locator('input[name="name"]').fill("A");
+      await create.locator('input[name="email"]').fill("not-an-email");
+      await create.locator('input[name="temporaryPassword"]').fill("short");
+      await create.getByRole("button", { name: "Vytvoriť účet", exact: true }).click();
+      assert.match(await summary.innerText(), /aspoň 2/);
+      assert.match(await summary.innerText(), /platnú e-mailovú/);
+      assert.match(await summary.innerText(), /aspoň 10/);
+      assert.equal(createRequests, 0);
+      await create.locator('input[name="name"]').fill("Test validation");
+      await create.locator('input[name="email"]').fill("validation@example.test");
+      await create.locator('input[name="temporaryPassword"]').fill("long-enough-password");
+      const invalidUserResponse = page.waitForResponse((response) =>
+        response.url().endsWith("/api/users") && response.request().method() === "POST");
+      await create.getByRole("button", { name: "Vytvoriť účet", exact: true }).click();
+      assert.equal((await invalidUserResponse).status(), 400);
+      await page.getByText("Skontrolujte zadané údaje. E-mail: Zadajte platnú e-mailovú adresu.", { exact: true }).waitFor();
+      assert.equal(createRequests, 1);
+      assert.equal(await create.locator('[aria-invalid="true"]').count(), 0);
+      await noOverflow(page);
+
+      await page.goto(`${origin}/app/nakupy/novy?partner=${partner.id}&source=manual`);
+      await page.getByRole("button", { name: "Uložiť nákup", exact: true }).click();
+      const purchaseErrors = page.locator("[data-validation-summary]");
+      await purchaseErrors.waitFor();
+      assert.match(await purchaseErrors.innerText(), /Suma nákupu/);
+      assert.match(await purchaseErrors.innerText(), /Partner bol prítomný/);
+      assert.equal(await purchaseErrors.locator("li").count(), 2, "required radio group should produce one error");
+      await purchaseErrors.getByRole("button", { name: /Partner bol prítomný/ }).click();
+      assert.equal(await page.evaluate(() => (document.activeElement as HTMLInputElement)?.name), "partnerPresent");
+      await noOverflow(page);
+
+      let purchaseRequests = 0;
+      await page.route("**/api/purchases", async (route) => {
+        if (route.request().method() !== "POST") return route.continue();
+        purchaseRequests++;
+        await route.fulfill({
+          status: 409, contentType: "application/json",
+          body: JSON.stringify({ error: {
+            code: "PURCHASE_CONFIRMATION_REQUIRED", message: "Potvrďte správnosť sumy.",
+          } }),
+        });
+      });
+      await page.getByLabel("Suma nákupu s DPH", { exact: false }).fill("1234,56");
+      await page.locator('input[name="partnerPresent"][value="yes"]').check();
+      await page.getByRole("button", { name: "Uložiť nákup", exact: true }).click();
+      const confirmPurchase = page.getByRole("button", { name: "Potvrdiť a uložiť nákup", exact: true });
+      await confirmPurchase.waitFor();
+      assert.equal(await confirmPurchase.isEnabled(), true);
+      await confirmPurchase.click();
+      await purchaseErrors.waitFor();
+      assert.match(await purchaseErrors.innerText(), /Potvrdzujem správnosť sumy.*Zaškrtnite/);
+      assert.equal(purchaseRequests, 1, "missing confirmation must not issue another request");
+
+      await page.goto(`${origin}/app/nakupy/${purchase.id}`);
+      const save = page.getByRole("button", { name: "Uložiť zmeny", exact: true });
+      assert.equal(await save.isEnabled(), true);
+      await save.click();
+      await page.locator("[data-validation-summary]").waitFor();
+      assert.match(await page.locator("[data-validation-summary]").innerText(), /Dôvod úpravy/);
+      let deleteConfirmationShown = false;
+      page.once("dialog", async (dialog) => {
+        deleteConfirmationShown = true;
+        await dialog.dismiss();
+      });
+      await page.getByRole("button", { name: "Zmazať nákup", exact: true }).click();
+      assert.equal(deleteConfirmationShown, false, "a missing deletion reason must be explained before confirmation");
+      assert.equal(await page.evaluate(() => (document.activeElement as HTMLTextAreaElement)?.name), "reason");
+      page.removeAllListeners("dialog");
+
+      await page.goto(`${origin}/app/audit`);
+      await page.getByLabel("Od", { exact: true }).fill("2026-10-31");
+      await page.getByLabel("Do", { exact: true }).fill("2026-10-01");
+      await page.getByLabel("ID záznamu", { exact: true }).fill("0");
+      await page.getByRole("button", { name: "Filtrovať", exact: true }).click();
+      const auditErrors = page.locator("[data-validation-summary]");
+      await auditErrors.waitFor();
+      assert.match(await auditErrors.innerText(), /Koncový dátum/);
+      assert.match(await auditErrors.innerText(), /ID záznamu/);
+      assert.equal(new URL(page.url()).search, "", "invalid filters must not navigate to a generic error page");
+
+      await page.goto(`${origin}/app/reporty?month=2026-10`);
+      await page.getByRole("button", { name: "Od – do", exact: true }).click();
+      await page.getByLabel("Od dátumu", { exact: true }).fill("2025-01-01");
+      await page.getByLabel("Do dátumu", { exact: true }).fill("2026-01-02");
+      await page.getByRole("button", { name: "Zobraziť", exact: true }).click();
+      await page.locator("[data-validation-summary]").waitFor();
+      assert.match(await page.locator("[data-validation-summary]").innerText(), /najviac 366 dní/);
+      await page.getByLabel("Do dátumu", { exact: true }).fill("2026-01-01");
+      await page.getByRole("button", { name: "Zobraziť", exact: true }).click();
+      await page.waitForURL((url) => url.searchParams.get("to") === "2026-01-01");
+      await noOverflow(page);
+    });
+
     await t.test("partner token dialog traps focus and restores it on close", async () => {
       const page = await session(admin.email);
       await page.goto(`${origin}/app/partneri/${partner.id}`);
@@ -153,11 +272,9 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
       assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "Zavrieť");
       await page.keyboard.press("Escape");
       await dialog.waitFor({ state: "detached" });
-      await page.waitForFunction(() => {
-        const active = document.activeElement;
-        return active instanceof HTMLButtonElement &&
-          active.textContent?.trim() === "Nový NFC" && !active.disabled;
-      });
+      assert.equal(await generate.isEnabled(), true);
+      assert.equal(await generate.evaluate((element) => document.activeElement === element), true,
+        "closing the dialog should restore its now-enabled generating trigger");
     });
 
     await t.test("desktop filters, pagination, change details and private-value masking", async () => {
@@ -461,8 +578,11 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
         } });
         const page = await session(admin.email, true);
         await page.goto(`${origin}/app/nakupy/${editable.id}`);
-        assert.equal(await page.getByRole("button", { name: "Uložiť zmeny", exact: true }).isDisabled(), true);
-        assert.equal(await page.getByRole("button", { name: "Zmazať nákup", exact: true }).isDisabled(), true);
+        assert.equal(await page.getByRole("button", { name: "Uložiť zmeny", exact: true }).isEnabled(), true);
+        assert.equal(await page.getByRole("button", { name: "Zmazať nákup", exact: true }).isEnabled(), true);
+        await page.getByRole("button", { name: "Uložiť zmeny", exact: true }).tap();
+        await page.locator("[data-validation-summary]").waitFor();
+        assert.match(await page.locator("[data-validation-summary]").innerText(), /Dôvod úpravy/);
         await page.getByLabel("Suma s DPH (€)", { exact: true }).fill("24,60");
         await page.getByLabel("Interná poznámka", { exact: true }).fill('<img src=x onerror="window.phase11Xss=true">');
         await page.getByLabel("Dôvod úpravy *", { exact: true }).fill("Browser correction");

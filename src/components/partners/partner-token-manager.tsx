@@ -1,8 +1,10 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type SubmitEvent } from "react";
 import { useCompanyApi } from "@/components/company-context";
+import { ValidatedForm } from "@/components/validated-form";
+import { formatApiError } from "@/lib/validation-errors";
 
 type Token = {
   id: string;
@@ -133,7 +135,7 @@ export function PartnerTokenManager({
         error?: { message?: string };
       };
       if (!response.ok || !body.token || !body.value || !body.url || !body.qrSvg || !body.qrPng) {
-        setError(body.error?.message ?? "Token sa nepodarilo vytvoriť.");
+        setError(formatApiError(body.error, "Token sa nepodarilo vytvoriť."));
         return;
       }
       setIssued({
@@ -166,7 +168,7 @@ export function PartnerTokenManager({
       });
       const body = (await response.json()) as { error?: { message?: string } };
       if (!response.ok) {
-        setError(body.error?.message ?? "Token sa nepodarilo deaktivovať.");
+        setError(formatApiError(body.error, "Token sa nepodarilo deaktivovať."));
         return;
       }
       if (!(await refreshTokens())) {
@@ -177,6 +179,11 @@ export function PartnerTokenManager({
     } finally {
       setPending(false);
     }
+  }
+
+  function submitCreate(event: SubmitEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void createToken();
   }
 
   function closeIssuedDialog() {
@@ -235,13 +242,14 @@ export function PartnerTokenManager({
         </div>
       </div>
 
-      <div className="mt-4 grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(14rem,0.8fr)]">
+      <ValidatedForm className="mt-4 grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(14rem,0.8fr)]" onSubmit={submitCreate}>
         <label className="block text-sm font-medium text-stone-700">
           Označenie (voliteľné)
           <input
             className="mt-1.5 block w-full rounded-md border border-stone-300 px-3 py-2"
+            name="label"
             maxLength={80}
-            onChange={(event) => setLabel(event.target.value)}
+            onChange={(event) => { setError(""); setLabel(event.target.value); }}
             value={label}
           />
         </label>
@@ -251,7 +259,8 @@ export function PartnerTokenManager({
               <input
                 checked={replaceExisting}
                 className="mt-1"
-                onChange={(event) => setReplaceExisting(event.target.checked)}
+                name="deactivateTokenIds"
+                onChange={(event) => { setError(""); setReplaceExisting(event.target.checked); }}
                 type="checkbox"
               />
               Deaktivovať pôvodné aktívne {type === "qr" ? "QR kódy" : "NFC tokeny"}
@@ -262,8 +271,9 @@ export function PartnerTokenManager({
               Dôvod deaktivácie *
               <input
                 className="mt-1.5 block w-full rounded-md border border-stone-300 px-3 py-2"
+                name="deactivationReason"
                 maxLength={255}
-                onChange={(event) => setReason(event.target.value)}
+                onChange={(event) => { setError(""); setReason(event.target.value); }}
                 required
                 value={reason}
               />
@@ -271,17 +281,14 @@ export function PartnerTokenManager({
           ) : null}
           <button
             className="rounded-md bg-amber-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-amber-900 disabled:opacity-50"
-            disabled={pending || (replaceExisting && activeOfType.length > 0 && !reason.trim())}
-            onClick={(event) => {
-              issuedTriggerRef.current = event.currentTarget;
-              void createToken();
-            }}
-            type="button"
+            disabled={pending}
+            onClick={(event) => { issuedTriggerRef.current = event.currentTarget; }}
+            type="submit"
           >
             Vygenerovať {type === "qr" ? "QR" : "NFC"}
           </button>
         </div>
-      </div>
+      </ValidatedForm>
 
       {tokens.length ? (
         <div className="mt-6 overflow-x-auto">
@@ -430,6 +437,11 @@ function TokenRow({
   onDeactivate: (token: Token, reason: string) => Promise<void>;
 }) {
   const [reason, setReason] = useState("");
+  function submit(event: SubmitEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void onDeactivate(token, reason.trim());
+  }
+
   return (
     <tr className="border-b border-stone-100 align-top">
       <td className="py-3 pr-4">
@@ -450,24 +462,25 @@ function TokenRow({
       </td>
       <td className="py-3">
         {token.isActive ? (
-          <div className="min-w-40 space-y-2">
+          <ValidatedForm className="min-w-40 space-y-2" onSubmit={submit}>
             <input
               aria-label={`Dôvod deaktivácie tokenu ${token.tokenHint}`}
               className="w-full rounded-md border border-stone-300 px-2 py-1.5 text-xs"
+              name="reason"
               maxLength={255}
               onChange={(event) => setReason(event.target.value)}
               placeholder="Dôvod deaktivácie"
+              required
               value={reason}
             />
             <button
               className="text-xs font-semibold text-red-800 disabled:opacity-50"
-              disabled={pending || !reason.trim()}
-              onClick={() => void onDeactivate(token, reason.trim())}
-              type="button"
+              disabled={pending}
+              type="submit"
             >
               Deaktivovať
             </button>
-          </div>
+          </ValidatedForm>
         ) : null}
       </td>
     </tr>

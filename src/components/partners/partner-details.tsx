@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, type SubmitEvent } from "react";
 
 import { refreshPartnerViews } from "@/app/app/partneri/actions";
 import { useCompanyApi } from "@/components/company-context";
+import { ValidatedForm } from "@/components/validated-form";
+import { formatApiError } from "@/lib/validation-errors";
 
 type Partner = {
   id: string;
@@ -37,27 +39,35 @@ export function PartnerDetails({ partner }: { partner: Partner }) {
   async function changeStatus(action: "activate" | "deactivate") {
     setPending(true);
     setError("");
-    const response = await companyFetch(`/api/partners/${partner.id}/${action}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      ...(action === "deactivate"
-        ? { body: JSON.stringify({ reason }) }
-        : {}),
-    });
-    if (!response.ok) {
-      const body = (await response.json()) as { error?: { message?: string } };
-      setError(body.error?.message ?? "Stav partnera sa nepodarilo zmeniť.");
+    try {
+      const response = await companyFetch(`/api/partners/${partner.id}/${action}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        ...(action === "deactivate"
+          ? { body: JSON.stringify({ reason: reason.trim() }) }
+          : {}),
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        setError(formatApiError(body.error, "Stav partnera sa nepodarilo zmeniť."));
+        return;
+      }
+      const refresh = await refreshPartnerViews(companyId, selectionId);
+      if (refresh.error) {
+        setError(refresh.error);
+        return;
+      }
+      setReason("");
+    } catch {
+      setError("Požiadavku sa nepodarilo dokončiť. Skontrolujte pripojenie.");
+    } finally {
       setPending(false);
-      return;
     }
-    const refresh = await refreshPartnerViews(companyId, selectionId);
-    if (refresh.error) {
-      setError(refresh.error);
-      setPending(false);
-      return;
-    }
-    setReason("");
-    setPending(false);
+  }
+
+  function submitDeactivation(event: SubmitEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void changeStatus("deactivate");
   }
 
   return (
@@ -121,13 +131,14 @@ export function PartnerDetails({ partner }: { partner: Partner }) {
               : "Aktiváciou sa partner opäť sprístupní predavačom."}
           </p>
           {partner.isActive ? (
-            <div className="mt-4 space-y-3">
+            <ValidatedForm className="mt-4 space-y-3" onSubmit={submitDeactivation}>
               <label className="block text-sm font-medium text-stone-700">
                 Dôvod deaktivácie *
                 <textarea
                   className="mt-1.5 block w-full rounded-md border border-stone-300 px-3 py-2"
                   maxLength={255}
-                  onChange={(event) => setReason(event.target.value)}
+                  name="reason"
+                  onChange={(event) => { setError(""); setReason(event.target.value); }}
                   required
                   value={reason}
                   rows={3}
@@ -135,13 +146,13 @@ export function PartnerDetails({ partner }: { partner: Partner }) {
               </label>
               <button
                 className="w-full rounded-lg border border-[color:var(--color-pink)]/45 bg-[color:var(--color-pink)]/10 px-4 py-2.5 text-sm font-semibold text-white hover:bg-[color:var(--color-pink)]/20 disabled:opacity-50"
-                disabled={pending || !reason.trim()}
-                onClick={() => void changeStatus("deactivate")}
-                type="button"
+                disabled={pending}
+                type="submit"
               >
                 Deaktivovať partnera
               </button>
-            </div>
+              {error ? <p aria-live="polite" className="text-sm text-red-700">{error}</p> : null}
+            </ValidatedForm>
           ) : (
             <button
               className="mt-4 w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
@@ -152,7 +163,7 @@ export function PartnerDetails({ partner }: { partner: Partner }) {
               Aktivovať partnera
             </button>
           )}
-          {error ? <p aria-live="polite" className="mt-3 text-sm text-red-700">{error}</p> : null}
+          {!partner.isActive && error ? <p aria-live="polite" className="mt-3 text-sm text-red-700">{error}</p> : null}
         </aside>
       </div>
     </section>

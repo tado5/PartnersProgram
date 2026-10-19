@@ -8,6 +8,7 @@ import { env } from "@/lib/env";
 import { parseCompanyAuditFilters, listCompanyAuditLogs } from "@/server/repositories/audit-logs";
 import { requireCompanyPage } from "@/server/auth/session";
 import { prisma } from "@/server/db";
+import { ValidatedForm } from "@/components/validated-form";
 
 const filterActions = Object.keys(auditActionLabels).sort();
 const filterEntities = Object.keys(auditEntityLabels).sort();
@@ -65,7 +66,7 @@ export default async function AuditPage({ searchParams }: {
         Nemenná história zmien a prístupov v programe firmy. Citlivé údaje, ako heslá a kontaktné poznámky, sa nezobrazujú.
       </p>
 
-      <form className="glass-surface my-4 grid gap-x-3 gap-y-2 rounded-xl p-3 sm:grid-cols-2 lg:grid-cols-4 [&_label]:min-w-0 [&_label]:text-xs [&_input]:min-w-0 [&_input]:min-h-10 [&_input]:py-1.5 [&_input]:text-sm [&_select]:min-w-0 [&_select]:min-h-10 [&_select]:py-1.5 [&_select]:text-sm">
+      <ValidatedForm className="glass-surface my-4 grid gap-x-3 gap-y-2 rounded-xl p-3 sm:grid-cols-2 lg:grid-cols-4 [&_label]:min-w-0 [&_label]:text-xs [&_input]:min-w-0 [&_input]:min-h-10 [&_input]:py-1.5 [&_input]:text-sm [&_select]:min-w-0 [&_select]:min-h-10 [&_select]:py-1.5 [&_select]:text-sm">
         <label className="text-sm font-medium text-stone-700">
           Od
           <input className="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2" type="date" name="from" defaultValue={filters.from} />
@@ -97,17 +98,17 @@ export default async function AuditPage({ searchParams }: {
         </label>
         <label className="text-sm font-medium text-stone-700">
           ID záznamu
-          <input className="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2" inputMode="numeric" name="entityId" defaultValue={filters.entityId?.toString() ?? ""} />
+          <input className="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2" inputMode="numeric" name="entityId" maxLength={20} pattern="[0-9]{1,20}" defaultValue={filters.entityId?.toString() ?? ""} />
         </label>
         <label className="text-sm font-medium text-stone-700">
           ID partnera
-          <input className="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2" inputMode="numeric" name="partnerId" defaultValue={filters.partnerId?.toString() ?? ""} />
+          <input className="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2" inputMode="numeric" name="partnerId" maxLength={20} pattern="[0-9]{1,20}" defaultValue={filters.partnerId?.toString() ?? ""} />
         </label>
         <div className="flex flex-wrap items-end gap-2">
           <button className="rounded-md bg-stone-950 px-4 py-2 text-sm font-semibold text-white">Filtrovať</button>
           <Link className="rounded-md px-2 py-2 text-xs text-stone-600 underline hover:text-stone-950" href="/app/audit">Vymazať filtre</Link>
         </div>
-      </form>
+      </ValidatedForm>
 
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-stone-600">
         <p>Záznamy {result.total ? `${(result.page - 1) * result.pageSize + 1}–${Math.min(result.page * result.pageSize, result.total)} z ${result.total}` : "0"} · strana {result.page} z {pageCount}</p>

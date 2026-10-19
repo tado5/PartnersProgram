@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 
 import { useCompanyApi } from "@/components/company-context";
+import { ValidatedForm } from "@/components/validated-form";
+import { formatApiError } from "@/lib/validation-errors";
 
 export function CompanyLogoSettings({ logoUrl, companyName, readOnly }: {
   logoUrl: string | null; companyName: string; readOnly: boolean;
@@ -28,7 +30,7 @@ export function CompanyLogoSettings({ logoUrl, companyName, readOnly }: {
       const response = await companyFetch("/api/company/logo", { method, body });
       if (!response.ok) {
         const result = await response.json();
-        setError(result.error?.message ?? "Logo sa nepodarilo uložiť.");
+        setError(formatApiError(result.error, "Logo sa nepodarilo uložiť."));
         return;
       }
       setMessage(method === "DELETE" ? "Logo bolo odstránené." : "Logo bolo uložené.");
@@ -51,7 +53,7 @@ export function CompanyLogoSettings({ logoUrl, companyName, readOnly }: {
       {logoUrl ? <Image unoptimized src={logoUrl} width={192} height={64} alt={`Logo ${companyName}`}
         className="h-16 w-full max-w-48 object-contain object-left" /> : <strong className="break-words">{companyName}</strong>}
     </div>
-    {!readOnly ? <form onSubmit={(event) => void save(event)} className="space-y-3">
+    {!readOnly ? <ValidatedForm onSubmit={(event) => void save(event)} className="space-y-3">
       <label className="block text-sm font-medium">Vybrať logo
         <input className="mt-2 block w-full min-w-0 text-sm file:mr-3 file:rounded-md file:border file:border-stone-300 file:bg-white file:px-3 file:py-2"
           type="file" name="file" accept="image/png,image/jpeg,image/webp" required disabled={busy} />
@@ -63,7 +65,7 @@ export function CompanyLogoSettings({ logoUrl, companyName, readOnly }: {
         {logoUrl ? <button type="button" disabled={busy} onClick={() => void change("DELETE")}
           className="min-h-11 rounded-md border border-red-300 px-4 py-2 text-sm font-semibold text-red-800 disabled:opacity-60">Odstrániť logo</button> : null}
       </div>
-    </form> : null}
+    </ValidatedForm> : null}
     {error ? <p role="alert" className="mt-3 text-sm text-red-700">{error}</p> : null}
     {message ? <p role="status" className="mt-3 text-sm text-emerald-800">{message}</p> : null}
   </section>;

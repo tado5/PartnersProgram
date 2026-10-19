@@ -1,6 +1,7 @@
 import { env } from "@/lib/env";
 import { NextResponse } from "next/server";
-import { ZodError, type ZodType } from "zod";
+import { type ZodType } from "zod";
+import { validationFields } from "@/lib/validation-errors";
 
 export function hasSameOrigin(request: Request) {
   return request.headers.get("origin") === new URL(env.APP_BASE_URL).origin;
@@ -27,13 +28,7 @@ export async function readJson<T>(
     return { data: parsed.data };
   }
 
-  const fields =
-    parsed.error instanceof ZodError
-      ? parsed.error.issues.map((issue) => ({
-          field: issue.path.join("."),
-          message: issue.message,
-        }))
-      : undefined;
+  const fields = validationFields(parsed.error.issues);
   return {
     response: NextResponse.json(
       {

@@ -120,6 +120,20 @@ summary {
   outline-offset: 3px;
 }
 
+.validation-summary {
+  border-color: #fb7185;
+  background: #2d101b;
+  color: #fecdd3;
+  grid-column: 1 / -1;
+}
+
+:is(input, select, textarea)[aria-invalid="true"] {
+  border-color: #fb7185 !important;
+  outline: 2px solid #fb7185;
+  outline-offset: 2px;
+  scroll-margin-block: 6rem;
+}
+
 ::selection {
   background: rgba(0, 128, 255, 0.45);
   color: #ffffff;

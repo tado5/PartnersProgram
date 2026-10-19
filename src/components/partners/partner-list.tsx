@@ -5,6 +5,8 @@ import { useCallback, useState } from "react";
 import { useCompanyApi } from "@/components/company-context";
 import { PartnerTypeBadge } from "@/components/partners/partner-type-badge";
 import { CsvExportForm } from "@/components/exports/csv-export-form";
+import { ValidatedForm } from "@/components/validated-form";
+import { formatApiError } from "@/lib/validation-errors";
 
 type PartnerItem = {
   id: string;
@@ -61,7 +63,7 @@ export function PartnerList({
       const response = await companyFetch(`/api/partners?${params}`, { cache: "no-store" });
       if (!response.ok) {
         const body = (await response.json()) as ApiError;
-        setError(body.error?.message ?? "Zoznam partnerov sa nepodarilo načítať.");
+        setError(formatApiError(body.error, "Zoznam partnerov sa nepodarilo načítať."));
       } else {
         const body = (await response.json()) as {
           items: PartnerItem[];
@@ -109,7 +111,7 @@ export function PartnerList({
         ) : null}
       </div>
 
-      <form
+      <ValidatedForm
         className="glass-surface mb-5 grid gap-3 rounded-xl p-4 sm:grid-cols-2 xl:grid-cols-[minmax(10rem,1fr)_auto_auto_auto_auto]"
         onSubmit={submitSearch}
       >
@@ -117,12 +119,14 @@ export function PartnerList({
         <input
           className="rounded-md border border-stone-300 px-3 py-2 text-sm"
           id="partner-search"
+          name="q"
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Kód, meno, telefón alebo IČO"
           value={query}
         />
         <select
           aria-label="Typ partnera"
+          name="type"
           className="rounded-md border border-stone-300 bg-white px-3 py-2 text-sm"
           onChange={(event) => setType(event.target.value)}
           value={type}
@@ -135,6 +139,7 @@ export function PartnerList({
         {role === "admin" ? (
           <select
             aria-label="Stav partnera"
+            name="active"
             className="rounded-md border border-stone-300 bg-white px-3 py-2 text-sm"
             onChange={(event) => setActive(event.target.value)}
             value={active}
@@ -144,7 +149,7 @@ export function PartnerList({
             <option value="false">Neaktívni</option>
           </select>
         ) : null}
-        {role === "admin" ? <select aria-label="Informovanie o spracúvaní údajov"
+        {role === "admin" ? <select aria-label="Informovanie o spracúvaní údajov" name="privacy"
           className="min-w-0 rounded-md border border-stone-300 bg-white px-3 py-2 text-sm"
           value={privacy} onChange={(event) => setPrivacy(event.target.value)}>
           <option value="all">Všetci – informovanie</option>
@@ -158,7 +163,7 @@ export function PartnerList({
         >
           Hľadať
         </button>
-      </form>
+      </ValidatedForm>
 
       {error ? (
         <p aria-live="polite" className="mb-4 text-sm text-red-700">{error}</p>

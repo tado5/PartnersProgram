@@ -4,6 +4,7 @@ import { useState } from "react";
 import { FileDown, Loader2 } from "lucide-react";
 
 import { useCompanyApi } from "@/components/company-context";
+import { formatApiError } from "@/lib/validation-errors";
 
 export function ReportPdfButton({ query }: { query: string }) {
   const { companyFetch } = useCompanyApi();
@@ -17,7 +18,7 @@ export function ReportPdfButton({ query }: { query: string }) {
       const response = await companyFetch(`/api/reports/pdf?${query}`);
       if (!response.ok) {
         const body = await response.json().catch(() => null) as { error?: { message?: string } } | null;
-        setError(body?.error?.message ?? "PDF sa nepodarilo vygenerovať.");
+        setError(formatApiError(body?.error, "PDF sa nepodarilo vygenerovať."));
         return;
       }
       const blob = await response.blob();

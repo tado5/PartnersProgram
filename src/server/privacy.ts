@@ -10,6 +10,7 @@ import {
   lockCompanyContext, withCompanyErrors, type CompanyContext,
 } from "./auth/session";
 import { prisma } from "./db";
+import { validationFields } from "@/lib/validation-errors";
 
 export { privacyNoticeResponse } from "@/lib/privacy";
 
@@ -132,7 +133,7 @@ export async function publishCompanyPrivacyNotice(context: CompanyContext, input
     });
     if (!parsed.success) {
       throw new PrivacyError("VALIDATION_ERROR", "Pred publikovaním doplňte údaje oznámenia.", 400,
-        parsed.error.issues.map((issue) => ({ field: issue.path.join("."), message: issue.message })));
+        validationFields(parsed.error.issues));
     }
     const current = await currentPrivacyNotice(context.companyId, tx);
     if (current?.version === 4_294_967_295) {

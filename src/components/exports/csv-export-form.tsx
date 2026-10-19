@@ -4,6 +4,8 @@ import { FileDown, Loader2 } from "lucide-react";
 import { useState, type FormEvent, type ReactNode } from "react";
 
 import { useCompanyApi } from "@/components/company-context";
+import { ValidatedForm } from "@/components/validated-form";
+import { formatApiError } from "@/lib/validation-errors";
 
 export type CsvExportKind = "partners" | "purchases" | "monthly" | "audit-logs";
 
@@ -32,10 +34,10 @@ export function CsvExportForm({
       const response = await companyFetch(`/api/exports/${kind}.csv?${params}`);
       if (!response.ok) {
         const body: unknown = await response.json();
-        const message = body && typeof body === "object" && "error" in body &&
-          body.error && typeof body.error === "object" && "message" in body.error &&
-          typeof body.error.message === "string" ? body.error.message : "Export sa nepodarilo vytvoriť.";
-        setError(message);
+        setError(formatApiError(
+          body && typeof body === "object" && "error" in body ? body.error : undefined,
+          "Export sa nepodarilo vytvoriť.",
+        ));
         return;
       }
       const blob = await response.blob();
@@ -56,7 +58,7 @@ export function CsvExportForm({
   }
 
   return (
-    <form onSubmit={(event) => void download(event)} className="flex min-w-0 flex-col items-start gap-3">
+    <ValidatedForm maxRangeDays={kind === "monthly" ? 366 : undefined} onSubmit={(event) => void download(event)} className="flex min-w-0 flex-col items-start gap-3">
       {children}
       <button
         type="submit"
@@ -67,6 +69,6 @@ export function CsvExportForm({
         {busy ? "Pripravujem CSV…" : label}
       </button>
       {error ? <p role="alert" className="text-sm text-red-700">{error}</p> : null}
-    </form>
+    </ValidatedForm>
   );
 }

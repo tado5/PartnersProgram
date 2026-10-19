@@ -7,6 +7,7 @@ import { ChevronRight, Nfc, QrCode, UserSearch } from "lucide-react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { useCompanyApi } from "@/components/company-context";
+import { formatApiError } from "@/lib/validation-errors";
 
 type NdefRecord = { recordType: string; data: DataView };
 type NdefEvent = Event & { message: { records: NdefRecord[] } };
@@ -59,7 +60,7 @@ export function PurchaseScanner() {
         body: JSON.stringify({ token }),
       });
       const body = await response.json();
-      if (!response.ok) throw new Error(body.error?.message ?? "Kartu sa nepodarilo overiť.");
+      if (!response.ok) throw new Error(formatApiError(body.error, "Kartu sa nepodarilo overiť."));
       router.push(`/app/nakupy/novy?partner=${encodeURIComponent(body.partnerId)}&source=${source}&tokenId=${encodeURIComponent(body.tokenId)}`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Skenovanie sa nepodarilo.");

@@ -11,6 +11,7 @@ import { TopPartners } from "@/components/reports/top-partners";
 import { PeriodPicker } from "@/components/period-picker";
 import { periodLabel } from "@/lib/period";
 import { getPeriodReport, parseReportPeriod } from "@/server/reports";
+import { ValidatedForm } from "@/components/validated-form";
 
 export default async function MonthlyReportsPage({
   searchParams,
@@ -47,7 +48,7 @@ export default async function MonthlyReportsPage({
 
       <div className="mt-6 space-y-3">
         <PeriodPicker period={period} currentMonth={currentMonth} extraParams={{ type: typeInput }} />
-        <form method="get" className="glass-surface flex flex-wrap items-end gap-3 rounded-xl p-4">
+        <ValidatedForm method="get" className="glass-surface flex flex-wrap items-end gap-3 rounded-xl p-4">
           {period.month ? <input type="hidden" name="month" value={period.month} /> : <>
             <input type="hidden" name="from" value={period.from} />
             <input type="hidden" name="to" value={period.to} />
@@ -60,7 +61,7 @@ export default async function MonthlyReportsPage({
             </select>
           </label>
           <button className="min-h-11 rounded-md bg-stone-950 px-4 py-2 text-sm font-semibold text-white">Filtrovať</button>
-        </form>
+        </ValidatedForm>
       </div>
 
       <h2 className="mt-8 text-2xl font-semibold text-white">{periodLabel(period)}</h2>

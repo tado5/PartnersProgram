@@ -2,6 +2,8 @@
 
 import { useCallback, useState, type FormEvent } from "react";
 import { useCompanyApi } from "@/components/company-context";
+import { ValidatedForm } from "@/components/validated-form";
+import { formatApiError } from "@/lib/validation-errors";
 
 type ManagedUser = {
   id: string;
@@ -18,7 +20,7 @@ type ApiError = { error?: { message?: string } };
 
 async function responseError(response: Response) {
   const body = (await response.json()) as ApiError;
-  return body.error?.message ?? "Požiadavku sa nepodarilo dokončiť.";
+  return formatApiError(body.error, "Požiadavku sa nepodarilo dokončiť.");
 }
 
 function UserRow({
@@ -101,11 +103,14 @@ function UserRow({
               }).format(new Date(user.lastLoginAt))
             : "zatiaľ žiadne"}
         </p>
-        <form className="mt-4 flex flex-wrap gap-2" onSubmit={resetPassword}>
+        <ValidatedForm className="mt-4 flex flex-wrap gap-2" onSubmit={resetPassword}>
           <input
             autoComplete="new-password"
+            aria-label={`Nové dočasné heslo: ${user.name}`}
+            name="temporaryPassword"
             className="min-w-56 rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-amber-700 focus:ring-2 focus:ring-amber-100"
             minLength={10}
+            maxLength={128}
             onChange={(event) => setTemporaryPassword(event.target.value)}
             placeholder="Nové dočasné heslo (10+ znakov)"
             required
@@ -119,7 +124,7 @@ function UserRow({
           >
             Resetovať heslo
           </button>
-        </form>
+        </ValidatedForm>
         {message ? (
           <p aria-live="polite" className="mt-2 text-sm text-stone-600">
             {message}
@@ -128,6 +133,7 @@ function UserRow({
       </div>
       <div className="flex flex-wrap items-start gap-2 lg:justify-end">
         <select
+          name="role"
           aria-label={`Rola: ${user.name}`}
           className="rounded-md border border-stone-300 bg-white px-3 py-2 text-sm"
           disabled={pending}
@@ -225,12 +231,13 @@ export function UserAdminPanel({
         <p className="mt-1 text-sm leading-6 text-stone-600">
           Používateľ sa po prvom prihlásení musí zmeniť dočasné heslo.
         </p>
-        <form className="mt-5 space-y-4" onSubmit={createUser}>
+        <ValidatedForm className="mt-5 space-y-4" onSubmit={createUser}>
           <label className="block text-sm font-medium text-stone-700">
             Meno
             <input
               className="mt-1.5 block w-full rounded-md border border-stone-300 px-3 py-2 text-sm"
               minLength={2}
+              maxLength={150}
               name="name"
               required
             />
@@ -261,13 +268,14 @@ export function UserAdminPanel({
               autoComplete="new-password"
               className="mt-1.5 block w-full rounded-md border border-stone-300 px-3 py-2 text-sm"
               minLength={10}
+              maxLength={128}
               name="temporaryPassword"
               required
               type="password"
             />
           </label>
           {error ? (
-            <p aria-live="polite" className="text-sm text-red-700">
+            <p role="alert" aria-live="polite" className="text-sm text-red-700">
               {error}
             </p>
           ) : null}
@@ -278,7 +286,7 @@ export function UserAdminPanel({
           >
             Vytvoriť účet
           </button>
-        </form>
+        </ValidatedForm>
       </aside>
     </div>
   );

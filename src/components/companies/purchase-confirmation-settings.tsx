@@ -2,6 +2,8 @@
 
 import { useState, type FormEvent } from "react";
 import { useCompanyApi } from "@/components/company-context";
+import { ValidatedForm } from "@/components/validated-form";
+import { formatApiError } from "@/lib/validation-errors";
 
 const inputClass = "mt-2 block w-full rounded-md border border-stone-300 px-3 py-2";
 const buttonClass = "rounded-md bg-stone-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50";
@@ -48,7 +50,7 @@ export function PurchaseConfirmationSettings({
       });
       const body = await response.json();
       if (!response.ok) {
-        setError(body.error?.message ?? "Nastavenie sa nepodarilo uložiť.");
+        setError(formatApiError(body.error, "Nastavenie sa nepodarilo uložiť."));
         return;
       }
       setLimit(body.company.purchaseConfirmAboveEur ?? "");
@@ -67,7 +69,7 @@ export function PurchaseConfirmationSettings({
   }
 
   return (
-    <form onSubmit={submit} className="max-w-xl space-y-5 rounded-xl border border-stone-200 bg-white p-5">
+    <ValidatedForm onSubmit={submit} className="max-w-xl space-y-5 rounded-xl border border-stone-200 bg-white p-5">
       <fieldset disabled={readOnly} className="space-y-5">
       <div>
         <label className="block text-sm font-medium text-stone-700" htmlFor="company-vat-rate">
@@ -75,6 +77,7 @@ export function PurchaseConfirmationSettings({
         </label>
         <input
           id="company-vat-rate"
+          name="vatRatePercent"
           className={inputClass}
           type="number"
           min="0"
@@ -95,6 +98,7 @@ export function PurchaseConfirmationSettings({
         </label>
         <input
           id="purchase-confirm-limit"
+          name="purchaseConfirmAboveEur"
           className={inputClass}
           type="number"
           min="0.01"
@@ -130,6 +134,7 @@ export function PurchaseConfirmationSettings({
               max="99999999.99"
               step="0.01"
               inputMode="decimal"
+              name={`${tier}MonthlyTurnoverEur`}
               value={thresholds[tier]}
               onChange={(event) => setThresholds((current) => ({ ...current, [tier]: event.target.value }))}
               placeholder="Vypnuté"
@@ -148,6 +153,6 @@ export function PurchaseConfirmationSettings({
           {pending ? "Ukladám…" : "Uložiť nastavenie"}
         </button>
       )}
-    </form>
+    </ValidatedForm>
   );
 }

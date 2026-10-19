@@ -1,6 +1,7 @@
 import { requireSuperadminPage } from "@/server/auth/superadmin";
 import { CompanyError, listCompanies } from "@/server/companies";
 import { DocumentLink } from "@/components/company-context";
+import { ValidatedForm } from "@/components/validated-form";
 
 export default async function CompaniesPage({ searchParams }: {
   searchParams: Promise<{ q?: string; active?: string; page?: string }>;
@@ -22,13 +23,13 @@ export default async function CompaniesPage({ searchParams }: {
       <h1 className="text-3xl font-bold text-white sm:text-4xl">Firmy</h1>
       <DocumentLink href="/superadmin/firmy/nova" className="inline-flex min-h-11 items-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90">Pridať firmu</DocumentLink>
     </div>
-    <form className="glass-surface mb-6 flex flex-wrap gap-3 rounded-xl p-4">
+    <ValidatedForm className="glass-surface mb-6 flex flex-wrap gap-3 rounded-xl p-4">
       <input className="rounded-md border px-3 py-2" name="q" aria-label="Vyhľadať firmu" placeholder="Názov, slug alebo IČO" defaultValue={filters.q} />
       <select className="rounded-md border px-3 py-2" name="active" aria-label="Stav firmy" defaultValue={filters.active ?? "all"}>
         <option value="all">Všetky stavy</option><option value="true">Aktívne</option><option value="false">Neaktívne</option>
       </select>
       <button className="min-h-11 rounded-lg border border-white/20 bg-white/5 px-4 py-2 font-medium text-white hover:bg-white/10">Vyhľadať</button>
-    </form>
+    </ValidatedForm>
     <div className="data-surface divide-y divide-stone-200 rounded-xl px-5">
       {result.items.map((company) => <article key={company.id} className="flex flex-wrap items-center justify-between gap-4 py-5">
         <div><a href={`/superadmin/firmy/${company.id}`} className="font-semibold underline">{company.name}</a>

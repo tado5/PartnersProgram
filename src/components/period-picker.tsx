@@ -6,6 +6,7 @@ import { useState } from "react";
 import { CalendarRange, ChevronLeft, ChevronRight } from "lucide-react";
 
 import { monthLabel, monthOptions, shiftMonth, type PeriodValue } from "@/lib/period";
+import { ValidatedForm } from "@/components/validated-form";
 
 const chip = "inline-flex min-h-11 items-center rounded-full border px-4 text-sm font-medium transition";
 const chipIdle = "border-stone-300 bg-white text-stone-700 hover:bg-stone-100";
@@ -81,7 +82,7 @@ export function PeriodPicker({
         </div>
       </div>
       {showRange ? (
-        <form method="get" action={pathname} className="mt-3 flex flex-wrap items-end gap-3 border-t border-stone-100 pt-3">
+        <ValidatedForm method="get" action={pathname} maxRangeDays={366} className="mt-3 flex flex-wrap items-end gap-3 border-t border-stone-100 pt-3">
           {extras.map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}
           <label className="block text-sm font-medium text-stone-700">
             Od dátumu
@@ -95,7 +96,7 @@ export function PeriodPicker({
           </label>
           <button className="min-h-11 rounded-md bg-stone-950 px-4 py-2 text-sm font-semibold text-white">Zobraziť</button>
           <p className="w-full text-xs text-stone-500">Najviac 366 dní. Odznaky partnerov sa vždy počítajú po celých mesiacoch.</p>
-        </form>
+        </ValidatedForm>
       ) : null}
     </div>
   );

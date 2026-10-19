@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type SubmitEvent } from "react";
 
 import { useCompanyApi } from "@/components/company-context";
+import { ValidatedForm } from "@/components/validated-form";
 import { dateTimeInputInZoneToIso } from "@/lib/dates";
 import { netAmountFromGross, pointsForAmount } from "@/lib/purchases";
+import { formatApiError } from "@/lib/validation-errors";
 
 export function PurchaseAdminForm({
   purchase,
@@ -38,13 +40,16 @@ export function PurchaseAdminForm({
   const [searchingPartners, setSearchingPartners] = useState(false);
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
+  const [deleteReasonInvalid, setDeleteReasonInvalid] = useState(false);
   const [pending, setPending] = useState(false);
+  const reasonRef = useRef<HTMLTextAreaElement>(null);
+  const partnerQueryRef = useRef<HTMLInputElement>(null);
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     const purchasedAt = dateTimeInputInZoneToIso(date, "Europe/Bratislava");
     if (!purchasedAt) {
-      setError("Zadaný dátum a čas nie je platný.");
+      setError("Dátum a čas: zadaná hodnota nie je platná.");
       return;
     }
     setPending(true);
@@ -60,7 +65,7 @@ export function PurchaseAdminForm({
         }),
       });
       const body = await response.json();
-      if (!response.ok) throw new Error(body.error?.message ?? "Nákup sa nepodarilo upraviť.");
+      if (!response.ok) throw new Error(formatApiError(body.error, "Nákup sa nepodarilo upraviť."));
       router.refresh();
       setReason("");
     } catch (cause) {
@@ -71,12 +76,17 @@ export function PurchaseAdminForm({
   }
 
   async function searchPartners() {
+    if (!partnerQuery.trim()) {
+      setError("Vyhľadávanie partnerov: zadajte meno alebo kód.");
+      partnerQueryRef.current?.focus();
+      return;
+    }
     setSearchingPartners(true);
     setError("");
     try {
       const response = await companyFetch(`/api/partners?q=${encodeURIComponent(partnerQuery.trim())}&active=true`);
       const body = await response.json();
-      if (!response.ok) throw new Error(body.error?.message ?? "Vyhľadávanie partnerov zlyhalo.");
+      if (!response.ok) throw new Error(formatApiError(body.error, "Vyhľadávanie partnerov zlyhalo."));
       setPartnerMatches(body.items.map((item: { id: string; code: string; displayName: string }) => ({
         id: item.id, code: item.code, displayName: item.displayName,
       })));
@@ -88,6 +98,12 @@ export function PurchaseAdminForm({
   }
 
   async function remove() {
+    if (!reason.trim()) {
+      setDeleteReasonInvalid(true);
+      setError("Dôvod úpravy: zadajte dôvod pred zmazaním nákupu.");
+      reasonRef.current?.focus();
+      return;
+    }
     if (!window.confirm("Nákup sa označí ako zmazaný a jeho body sa prestanú započítavať. Pokračovať?")) return;
     setPending(true);
     setError("");
@@ -98,7 +114,7 @@ export function PurchaseAdminForm({
         body: JSON.stringify({ reason }),
       });
       const body = await response.json();
-      if (!response.ok) throw new Error(body.error?.message ?? "Nákup sa nepodarilo zmazať.");
+      if (!response.ok) throw new Error(formatApiError(body.error, "Nákup sa nepodarilo zmazať."));
       router.replace("/app/nakupy?includeDeleted=true");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Požiadavku sa nepodarilo dokončiť.");
@@ -107,7 +123,7 @@ export function PurchaseAdminForm({
   }
 
   return (
-    <form aria-busy={pending} onSubmit={(event) => void submit(event)} className="data-surface rounded-xl p-5">
+    <ValidatedForm aria-busy={pending} onSubmit={(event) => void submit(event)} className="data-surface rounded-xl p-5">
       {purchase.isDeleted ? (
         <p className="rounded-md bg-red-50 p-3 text-sm font-medium text-red-800">Tento nákup je zmazaný a body sa nezapočítavajú.</p>
       ) : (
@@ -116,9 +132,9 @@ export function PurchaseAdminForm({
             <legend className="text-sm font-medium">Partner</legend>
             <p className="mt-1 text-sm text-stone-600">{selectedPartner.displayName} · {selectedPartner.code}</p>
             <div className="mt-3 flex gap-2">
-              <input className={inputClass} aria-label="Vyhľadať iného partnera" value={partnerQuery}
-                onChange={(event) => setPartnerQuery(event.target.value)} />
-              <button className={secondaryButton} type="button" disabled={searchingPartners || !partnerQuery.trim()}
+              <input ref={partnerQueryRef} className={inputClass} aria-label="Vyhľadať iného partnera" name="q" value={partnerQuery}
+                onChange={(event) => { setError(""); setPartnerQuery(event.target.value); }} />
+              <button className={secondaryButton} type="button" disabled={searchingPartners}
                 onClick={() => void searchPartners()}>
                 {searchingPartners ? "Hľadám…" : "Vyhľadať"}
               </button>
@@ -134,8 +150,17 @@ export function PurchaseAdminForm({
           </fieldset>
           <div className="grid gap-5 sm:grid-cols-2">
             <label className="block text-sm font-medium">Suma s DPH (€)
-              <input className={inputClass} type="text" inputMode="decimal" pattern="\d{1,6}([.,]\d{1,2})?" required
-                value={amount} onChange={(event) => setAmount(event.target.value)} />
+              <input className={inputClass} type="text" name="amount" inputMode="decimal" pattern="\d{1,6}([.,]\d{1,2})?" required
+                value={amount} onChange={(event) => {
+                  const value = event.target.value;
+                  const matchesAmountPattern = /^\d{1,6}(?:[.,]\d{1,2})?$/.test(value.trim());
+                  const numericAmount = Number(value.trim().replace(",", "."));
+                  event.currentTarget.setCustomValidity(
+                    matchesAmountPattern && numericAmount <= 0 ? "Suma musí byť väčšia ako 0 €." : "",
+                  );
+                  setError("");
+                  setAmount(value);
+                }} />
             </label>
             <p className="text-sm text-stone-600">
               Sadzba pri pôvodnom zápise: {purchase.vatRatePercent} %. Úprava sumy použije túto historickú sadzbu. Bodový súčet sa počíta bez DPH.
@@ -143,20 +168,26 @@ export function PurchaseAdminForm({
             <fieldset>
               <legend className="text-sm font-medium">Partner bol prítomný?</legend>
               <div className="mt-3 flex gap-4">
-                <label className="flex items-center gap-2"><input type="radio" checked={present} onChange={() => setPresent(true)} /> Áno</label>
-                <label className="flex items-center gap-2"><input type="radio" checked={!present} onChange={() => setPresent(false)} /> Nie</label>
+                <label className="flex items-center gap-2"><input type="radio" name="partnerPresent" value="yes" checked={present} onChange={() => setPresent(true)} /> Áno</label>
+                <label className="flex items-center gap-2"><input type="radio" name="partnerPresent" value="no" checked={!present} onChange={() => setPresent(false)} /> Nie</label>
               </div>
             </fieldset>
             <label className="block text-sm font-medium">Dátum a čas
-              <input className={inputClass} type="datetime-local" required value={date} onChange={(event) => setDate(event.target.value)} />
+              <input className={inputClass} type="datetime-local" name="purchasedAt" required value={date} onChange={(event) => { setError(""); setDate(event.target.value); }} />
             </label>
             <label className="block text-sm font-medium">Interná poznámka
-              <textarea className={inputClass} rows={2} maxLength={500} value={note} onChange={(event) => setNote(event.target.value)} />
+              <textarea className={inputClass} name="note" rows={2} maxLength={500} value={note} onChange={(event) => setNote(event.target.value)} />
             </label>
           </div>
           <label className="mt-5 block text-sm font-medium">Dôvod úpravy *
-            <textarea className={inputClass} rows={2} maxLength={255} required value={reason} onChange={(event) => setReason(event.target.value)} />
+            <textarea ref={reasonRef} className={inputClass} name="reason" aria-invalid={deleteReasonInvalid || undefined}
+              aria-describedby={deleteReasonInvalid ? "purchase-delete-reason-error" : undefined}
+              rows={2} maxLength={255} required value={reason}
+              onChange={(event) => { setDeleteReasonInvalid(false); setError(""); setReason(event.target.value); }} />
           </label>
+          {deleteReasonInvalid ? <p id="purchase-delete-reason-error" role="alert" className="mt-2 text-sm text-red-700">
+            Dôvod úpravy: zadajte dôvod pred zmazaním nákupu.
+          </p> : null}
           {/^\d{1,6}(?:[.,]\d{1,2})?$/.test(amount.trim()) ? (() => {
             const preview = netAmountFromGross(amount.replace(",", "."), purchase.vatRatePercent);
             return <p className="mt-3 rounded-md border border-white/12 bg-white/5 p-3 text-sm">
@@ -164,8 +195,8 @@ export function PurchaseAdminForm({
             </p>;
           })() : null}
           <div className="mt-4 flex flex-wrap gap-3">
-            <button className={primaryButton} disabled={pending || !reason.trim()}>{pending ? "Ukladám…" : "Uložiť zmeny"}</button>
-            <button className={dangerButton} type="button" disabled={pending || !reason.trim()} onClick={() => void remove()}>
+            <button className={primaryButton} type="submit" disabled={pending}>{pending ? "Ukladám…" : "Uložiť zmeny"}</button>
+            <button className={dangerButton} type="button" disabled={pending} onClick={() => void remove()}>
               Zmazať nákup
             </button>
             <Link className={secondaryButton} href="/app/nakupy">Späť na nákupy</Link>
@@ -173,8 +204,8 @@ export function PurchaseAdminForm({
         </>
       )}
       {purchase.isDeleted ? <Link className={`${secondaryButton} mt-4`} href="/app/nakupy?includeDeleted=true">Späť na nákupy</Link> : null}
-      {error ? <p role="alert" className="mt-4 text-sm text-red-700">{error}</p> : null}
-    </form>
+      {error && !deleteReasonInvalid ? <p role="alert" className="mt-4 text-sm text-red-700">{error}</p> : null}
+    </ValidatedForm>
   );
 }
 

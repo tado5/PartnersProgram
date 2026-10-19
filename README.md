@@ -10,6 +10,8 @@ Viacfiremná webová aplikácia na správu oddelených partnerských programov, 
 
 **GDPR dokument:** verejná stránka `/gdpr` obsahuje hlavný slovenský dokument a stiahnutie PDF. V nastaveniach firmy je text automaticky predvyplnený, názov a IČO sa preberú z údajov firmy; sídlo a kontaktný e-mail sa doplnia tam, keďže ich profil firmy zatiaľ neeviduje. Admin môže podľa potreby upraviť kontakty, podmienky a lehoty a publikovať firemnú verziu. Každá verzia má vlastné PDF na `/ochrana-udajov/{slug}?version=N&format=pdf`. Predvolené retenčné pravidlá nie sú univerzálne zákonné lehoty ani automatický výmaz: firma musí zabezpečiť ich dodržiavanie. Rozšírenie nevyžaduje ďalšiu DB migráciu.
 
+**Validácia formulárov:** neplatné polia sa po opustení alebo odoslaní označia a zobrazí sa slovenský zoznam chýb s názvami polí. Odoslanie presunie používateľa na prvú chybu; položka v zozname umožní návrat na konkrétne pole aj na mobile. Serverové validačné chyby zobrazujú konkrétne polia namiesto samotného všeobecného upozornenia. Povinný dôvod či potvrdenie sa vysvetlí pri pokuse o akciu; tlačidlá zostávajú blokované počas spracovania. Pravidlá overovania na serveri zostávajú zachované.
+
 ## Požiadavky
 
 - Docker Desktop s Docker Compose
