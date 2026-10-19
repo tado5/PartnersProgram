@@ -14,6 +14,8 @@ Viacfiremná webová aplikácia na správu oddelených partnerských programov, 
 
 **Detail partnera:** po údajoch partnera nasledujú mesačné ocenenia, QR/NFC tokeny, nákupy, evidencia informovania o spracúvaní údajov a nakoniec audit. Pri existujúcej evidencii informovania je formulár skrytý za tlačidlom **Zaznamenať ďalšie poskytnutie / opravu**; nový záznam pôvodnú históriu neprepisuje. Ak evidencia ešte chýba, formulár zostáva otvorený.
 
+**Tmavý vzhľad:** spoločné štýly mapujú aj staršie hover utility na priesvitné zvýraznenie a svetlý text. Zoznamy partnerov, výber partnera, exporty a QR/NFC akcie tak pri prejdení myšou neprechádzajú na biele pozadie.
+
 ## Požiadavky
 
 - Docker Desktop s Docker Compose

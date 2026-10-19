@@ -260,6 +260,40 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
       await noOverflow(page);
     });
 
+    await t.test("legacy hover utilities retain translucent backgrounds and readable text in the dark theme", async () => {
+      const page = await session(admin.email);
+      await page.goto(`${origin}/app/partneri`);
+      const row = page.locator('div[class~="hover:bg-stone-50"]').first();
+      await row.waitFor();
+      await row.hover();
+      assert.equal(await row.evaluate((element) => getComputedStyle(element).backgroundColor), "rgba(255, 255, 255, 0.12)");
+
+      const variants = [
+        ["hover:bg-stone-50", "backgroundColor", "rgba(255, 255, 255, 0.12)"],
+        ["hover:bg-stone-100", "backgroundColor", "rgba(255, 255, 255, 0.12)"],
+        ["hover:bg-amber-50", "backgroundColor", "rgba(0, 128, 255, 0.2)"],
+        ["hover:text-stone-950", "color", "rgb(255, 255, 255)"],
+        ["hover:text-stone-900", "color", "rgb(255, 255, 255)"],
+        ["hover:text-amber-950", "color", "rgb(102, 179, 255)"],
+        ["hover:text-teal-900", "color", "rgb(94, 234, 212)"],
+      ] as const;
+      for (const [className, property, expected] of variants) {
+        await page.evaluate((variant) => {
+          document.getElementById("hover-regression-probe")?.remove();
+          const probe = document.createElement("div");
+          probe.id = "hover-regression-probe";
+          probe.className = variant;
+          probe.textContent = "Hover";
+          probe.style.cssText = "position:fixed;top:0;left:0;width:120px;height:50px;z-index:9999";
+          document.body.append(probe);
+        }, className);
+        const probe = page.locator("#hover-regression-probe");
+        await probe.hover();
+        assert.equal(await probe.evaluate((element, key) => getComputedStyle(element)[key], property), expected, className);
+      }
+      await page.evaluate(() => document.getElementById("hover-regression-probe")?.remove());
+    });
+
     await t.test("partner token dialog traps focus and restores it on close", async () => {
       const page = await session(admin.email);
       await page.goto(`${origin}/app/partneri/${partner.id}`);
