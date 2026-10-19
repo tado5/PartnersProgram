@@ -44,7 +44,7 @@ export function CompanyLogoSettings({ logoUrl, companyName, readOnly }: {
     }
   }
 
-  return <section className="mb-6 max-w-2xl rounded-xl border border-stone-200 bg-white p-5">
+  return <section className="data-surface mb-6 max-w-2xl rounded-xl p-5">
     <h2 className="text-xl font-semibold">Logo firmy</h2>
     <p className="mt-2 text-sm leading-6 text-stone-600">
       Zobrazuje sa v menu, verejnej partnerskej karte a PDF reporte.

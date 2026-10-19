@@ -40,7 +40,7 @@ export function CompanyForm({ company }: {
     }
   }
   return (
-    <ValidatedForm onSubmit={submit} className="max-w-xl space-y-5">
+    <ValidatedForm onSubmit={submit} className="data-surface max-w-xl space-y-5 rounded-xl p-5">
       <label className="block text-sm">Názov firmy
         <input className={inputClass} name="name" onChange={() => setError("")}
           required minLength={2} maxLength={100} defaultValue={company?.name} />

@@ -81,7 +81,7 @@ export function PrivacySettings({ initial, companySlug, companyName, companyIco,
     }
   }
 
-  return <section className="mb-6 max-w-3xl rounded-xl border border-stone-200 bg-white p-5">
+  return <section className="data-surface mb-6 max-w-3xl rounded-xl p-5">
     <h2 className="text-xl font-semibold">Ochrana osobných údajov</h2>
     <p className="mt-2 text-sm text-stone-600">
       Dokument je predvyplnený pre partnerský program. Názov a IČO sa preberajú z údajov firmy.

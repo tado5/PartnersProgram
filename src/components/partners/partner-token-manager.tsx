@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { createPortal } from "react-dom";
 import { useEffect, useRef, useState, type SubmitEvent } from "react";
 import { useCompanyApi } from "@/components/company-context";
 import { ValidatedForm } from "@/components/validated-form";
@@ -214,7 +215,7 @@ export function PartnerTokenManager({
   }
 
   return (
-    <section className="mt-5 rounded-xl border border-stone-200 bg-white p-5">
+    <section className="data-surface mt-5 rounded-xl p-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold text-stone-950">QR a NFC tokeny</h2>
@@ -320,17 +321,17 @@ export function PartnerTokenManager({
 
       {error ? <p aria-live="polite" className="mt-3 text-sm text-red-700">{error}</p> : null}
 
-      {issued ? (
+      {issued ? createPortal(
         <div
           aria-labelledby="issued-token-title"
           aria-describedby="issued-token-description"
           aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-stone-950/60 p-4"
+          className="fixed inset-0 z-[400] flex items-center justify-center overflow-y-auto bg-stone-950/60 p-4"
           role="dialog"
           ref={issuedDialogRef}
           tabIndex={-1}
         >
-          <div className="my-auto w-full max-w-lg rounded-xl bg-white p-6 shadow-xl">
+          <div className="data-surface my-auto w-full max-w-lg rounded-xl p-6 shadow-xl">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h2 className="text-xl font-semibold text-stone-950" id="issued-token-title">
@@ -421,7 +422,8 @@ export function PartnerTokenManager({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       ) : null}
     </section>
   );

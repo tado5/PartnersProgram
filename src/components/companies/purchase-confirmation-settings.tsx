@@ -69,7 +69,7 @@ export function PurchaseConfirmationSettings({
   }
 
   return (
-    <ValidatedForm onSubmit={submit} className="max-w-xl space-y-5 rounded-xl border border-stone-200 bg-white p-5">
+    <ValidatedForm onSubmit={submit} className="data-surface max-w-xl space-y-5 rounded-xl p-5">
       <fieldset disabled={readOnly} className="space-y-5">
       <div>
         <label className="block text-sm font-medium text-stone-700" htmlFor="company-vat-rate">

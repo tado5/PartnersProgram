@@ -71,8 +71,11 @@ components:
     boxShadow: "0 8px 32px rgba(0,0,0,0.18)"
 
   dataSurface:
-    backgroundColor: "rgba(0,0,0,0.30)"
+    backgroundColor: "rgba(0,0,0,0.48)"
+    backgroundImage: "linear-gradient(135deg, rgba(255,255,255,0.055), rgba(255,255,255,0.015))"
+    backdropFilter: "blur(10px)"
     border: "1px solid rgba(255,255,255,0.12)"
+    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08), 0 8px 24px rgba(0,0,0,0.14)"
 
   primaryButton:
     backgroundColor: "{colors.primary}"
@@ -95,7 +98,7 @@ components:
     padding: "0.75rem 1rem"
 
   table:
-    backgroundColor: "rgba(0,0,0,0.30)"
+    backgroundColor: "{components.dataSurface.backgroundColor}"
     border: "1px solid rgba(255,255,255,0.12)"
     rowBorder: "1px solid rgba(255,255,255,0.10)"
     headerBackgroundColor: "rgba(255,255,255,0.10)"
@@ -128,7 +131,7 @@ The style is intended for the multi-company PartnersProgram application, includi
 
 The design must feel modern, premium and visually distinctive while keeping data-heavy workflows readable and efficient.
 
-Glassmorphism is used selectively. Navigation, KPI cards, overlays, dropdowns and highlighted surfaces may use translucent blurred glass. Tables, reports, forms and data-dense components must use a more opaque surface to preserve readability.
+Navigation, KPI cards and existing highlighted glass surfaces retain their original treatment. Previously flat tables, reports, forms and data panels use a subtler dark frosted surface: a 48% black base, low-opacity white reflection, 10px blur and a restrained inset highlight/shadow. Text and inputs remain high-contrast; nested data surfaces do not add another blur. Without backdrop-filter support the data surface uses 80% black; reduced-transparency preferences use 90% black without blur. Existing glass surfaces and their accessibility fallbacks are unchanged.
 
 ## Style
 
@@ -218,8 +221,9 @@ Use more opaque surfaces for:
 •	Dense dashboard widgets
 •	Multi-column layouts
 Use this visual treatment as the default:
-background: rgba(0, 0, 0, 0.30);
+background: linear-gradient(135deg, rgba(255,255,255,0.055), rgba(255,255,255,0.015)), rgba(0,0,0,0.48);
 border: 1px solid rgba(255, 255, 255, 0.12);
+backdrop-filter: blur(10px);
 
 Adjust opacity only when required to preserve readability. Do not add new colors.
 Typography

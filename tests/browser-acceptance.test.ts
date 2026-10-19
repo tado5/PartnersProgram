@@ -267,6 +267,45 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
       await noOverflow(page);
     });
 
+    await t.test("data panels have subtle glass while existing glass surfaces remain unchanged", async () => {
+      const page = await session(admin.email);
+      await page.goto(`${origin}/app/users`);
+      const panels = page.locator("main .data-surface");
+      await panels.first().waitFor();
+      assert.equal(await panels.count(), 2);
+      for (const panel of await panels.all()) {
+        const style = await panel.evaluate((element) => {
+          const computed = getComputedStyle(element);
+          return {
+            background: computed.backgroundColor, reflection: computed.backgroundImage,
+            blur: computed.backdropFilter, shadow: computed.boxShadow,
+          };
+        });
+        assert.equal(style.background, "rgba(0, 0, 0, 0.48)");
+        assert.match(style.reflection, /linear-gradient/);
+        assert.equal(style.blur, "blur(10px)");
+        assert.match(style.shadow, /inset/);
+      }
+      const sidebar = page.locator("aside.glass-surface").first();
+      const glass = await sidebar.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return { background: style.backgroundColor, blur: style.backdropFilter };
+      });
+      assert.deepEqual(glass, { background: "rgba(255, 255, 255, 0.15)", blur: "blur(15px)" });
+      const cdp = await page.context().newCDPSession(page);
+      await cdp.send("Emulation.setEmulatedMedia", {
+        features: [{ name: "prefers-reduced-transparency", value: "reduce" }],
+      });
+      assert.equal(await panels.first().evaluate((element) => getComputedStyle(element).backdropFilter), "none");
+      assert.equal(await panels.first().evaluate((element) => getComputedStyle(element).backgroundColor), "rgba(0, 0, 0, 0.9)");
+      await cdp.send("Emulation.setEmulatedMedia", { features: [] });
+      await cdp.detach();
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.reload();
+      await panels.first().waitFor();
+      await noOverflow(page);
+    });
+
     await t.test("first and subsequent table and list dividers use the same subtle dark-theme color", async () => {
       const page = await session(admin.email);
       await page.goto(`${origin}/app/nakupy`);

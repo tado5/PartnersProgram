@@ -54,7 +54,7 @@ export function PartnerPrivacy({ partnerId, companySlug, receipts, notices, read
     } finally { setBusy(false); }
   }
 
-  return <section className="mt-8 rounded-xl border border-stone-200 bg-white p-5">
+  return <section className="data-surface mt-8 rounded-xl p-5">
     <h2 className="text-xl font-semibold">Informovanie o spracúvaní údajov</h2>
     <p className={`mt-2 text-sm ${receipts.length ? "text-emerald-800" : "text-amber-900"}`}>
       {receipts.length ? "Poskytnutie informácií zaevidované" : "Poskytnutie informácií nezaevidované"}.
