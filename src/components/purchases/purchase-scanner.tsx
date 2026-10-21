@@ -7,6 +7,7 @@ import { ChevronRight, Nfc, QrCode, UserSearch } from "lucide-react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { useCompanyApi } from "@/components/company-context";
+import { ActionLabel } from "@/components/action-label";
 import { formatApiError } from "@/lib/validation-errors";
 
 type NdefRecord = { recordType: string; data: DataView };
@@ -32,6 +33,10 @@ export function PurchaseScanner() {
   const resolvingRef = useRef(false);
   const [message, setMessage] = useState("");
   const [cameraActive, setCameraActive] = useState(false);
+  const [cameraStarting, setCameraStarting] = useState(false);
+  const [nfcState, setNfcState] = useState<"idle" | "starting" | "reading">("idle");
+  const [resolving, setResolving] = useState(false);
+  const mountedRef = useRef(true);
   const nfcSupported = useSyncExternalStore(subscribeNfc, getNfcSupport, getNfcServerSnapshot);
 
   const Reader = typeof window === "undefined"
@@ -39,7 +44,9 @@ export function PurchaseScanner() {
     : (window as Window & { NDEFReader?: NdefReaderConstructor }).NDEFReader;
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       scannerRef.current?.stop();
       nfcAbortRef.current?.abort();
     };
@@ -48,6 +55,7 @@ export function PurchaseScanner() {
   async function resolveScan(value: string, source: "qr" | "nfc") {
     if (resolvingRef.current) return;
     resolvingRef.current = true;
+    setResolving(true);
     setMessage("");
     try {
       const token = tokenFromScan(value);
@@ -63,24 +71,34 @@ export function PurchaseScanner() {
       if (!response.ok) throw new Error(formatApiError(body.error, "Kartu sa nepodarilo overiť."));
       router.push(`/app/nakupy/novy?partner=${encodeURIComponent(body.partnerId)}&source=${source}&tokenId=${encodeURIComponent(body.tokenId)}`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Skenovanie sa nepodarilo.");
+      setMessage(error instanceof TypeError
+        ? "Kartu sa nepodarilo overiť. Skontrolujte pripojenie."
+        : error instanceof Error ? error.message : "Skenovanie sa nepodarilo.");
       resolvingRef.current = false;
+      setResolving(false);
       stopCamera();
+      nfcAbortRef.current?.abort();
+      setNfcState("idle");
     }
   }
 
   async function startCamera() {
+    if (cameraStarting || resolvingRef.current) return;
     setMessage("");
     if (!videoRef.current) return;
+    setCameraStarting(true);
     try {
       const reader = new BrowserQRCodeReader();
       scannerRef.current = await reader.decodeFromVideoDevice(undefined, videoRef.current, (result) => {
         if (result) void resolveScan(result.getText(), "qr");
       });
+      if (!mountedRef.current) { scannerRef.current.stop(); return; }
       setCameraActive(true);
     } catch {
       setMessage("Kameru sa nepodarilo spustiť. Overte povolenie kamery a použite HTTPS.");
       stopCamera();
+    } finally {
+      if (mountedRef.current) setCameraStarting(false);
     }
   }
 
@@ -91,12 +109,14 @@ export function PurchaseScanner() {
   }
 
   async function startNfc() {
+    if (nfcState !== "idle" || resolvingRef.current) return;
     setMessage("");
     if (!Reader) {
       setMessage("Tento prehliadač nepodporuje Web NFC. Použite QR alebo ručné vyhľadanie.");
       return;
     }
     const controller = new AbortController();
+    setNfcState("starting");
     try {
       const reader = new Reader();
       nfcAbortRef.current?.abort();
@@ -108,9 +128,14 @@ export function PurchaseScanner() {
       });
       reader.addEventListener("readingerror", () => setMessage("NFC kartu sa nepodarilo prečítať."));
       await reader.scan({ signal: controller.signal });
+      if (controller.signal.aborted || !mountedRef.current) return;
+      setNfcState("reading");
       setMessage("Priložte NFC kartu k telefónu.");
     } catch {
-      if (!controller.signal.aborted) setMessage("NFC skenovanie sa nepodarilo spustiť.");
+      if (!controller.signal.aborted) {
+        setMessage("NFC skenovanie sa nepodarilo spustiť.");
+        setNfcState("idle");
+      }
     }
   }
 
@@ -131,8 +156,8 @@ export function PurchaseScanner() {
           <video ref={videoRef} aria-label="Náhľad kamery pri skenovaní QR kódu" className="mt-5 aspect-[4/3] w-full rounded-xl border border-white/15 bg-black object-cover" playsInline muted />
           <div className="mt-5">
             {!cameraActive ? (
-              <button type="button" onClick={() => void startCamera()} className={`${primaryButton} w-full`}>
-                Zapnúť kameru
+              <button type="button" disabled={cameraStarting || resolving} aria-busy={cameraStarting} onClick={() => void startCamera()} className={`${primaryButton} w-full disabled:opacity-50`}>
+                <ActionLabel busy={cameraStarting} pending="Spúšťam kameru…">Zapnúť kameru</ActionLabel>
               </button>
             ) : (
               <button type="button" onClick={stopCamera} className={`${secondaryButton} w-full`}>Zastaviť kameru</button>
@@ -157,10 +182,16 @@ export function PurchaseScanner() {
             </div>
           </div>
           <div className="mt-5">
-            <button type="button" disabled={!nfcSupported} onClick={() => void startNfc()} className={`${primaryButton} w-full disabled:cursor-not-allowed disabled:border disabled:border-white/15 disabled:bg-white/10 disabled:text-white/70`}>
-              Načítať NFC
+            <button type="button" disabled={!nfcSupported || nfcState !== "idle" || resolving} aria-busy={nfcState === "starting"} onClick={() => void startNfc()} className={`${primaryButton} w-full disabled:cursor-not-allowed disabled:border disabled:border-white/15 disabled:bg-white/10 disabled:text-white/70`}>
+              <ActionLabel busy={nfcState === "starting"} pending="Spúšťam NFC…">{nfcState === "reading" ? "Čakám na NFC kartu…" : "Načítať NFC"}</ActionLabel>
             </button>
+            {nfcState === "reading" ? <button type="button" className={`${secondaryButton} mt-2 w-full`} onClick={() => {
+              nfcAbortRef.current?.abort(); setNfcState("idle"); setMessage("");
+            }}>Zastaviť NFC</button> : null}
           </div>
+          {resolving ? <p aria-busy="true" className="glass-surface mt-4 rounded-xl p-3 text-sm text-white">
+            <ActionLabel busy pending="Overujem kartu partnera…">{null}</ActionLabel>
+          </p> : null}
           <p className="mt-3 text-xs leading-5 text-white/60">Ak NFC nie je dostupné, použite QR kód alebo zápis bez karty.</p>
         </section>
       </div>

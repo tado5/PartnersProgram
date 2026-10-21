@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useRef, useState, type SubmitEvent } from "react";
 
 import { useCompanyApi } from "@/components/company-context";
+import { ActionLabel } from "@/components/action-label";
 import { ValidatedForm } from "@/components/validated-form";
 import { dateTimeInputInZoneToIso } from "@/lib/dates";
 import { netAmountFromGross, pointsForAmount } from "@/lib/purchases";
@@ -41,18 +42,20 @@ export function PurchaseAdminForm({
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
   const [deleteReasonInvalid, setDeleteReasonInvalid] = useState(false);
-  const [pending, setPending] = useState(false);
+  const [action, setAction] = useState<"save" | "delete" | null>(null);
+  const pending = action !== null;
   const reasonRef = useRef<HTMLTextAreaElement>(null);
   const partnerQueryRef = useRef<HTMLInputElement>(null);
 
   async function submit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (pending) return;
     const purchasedAt = dateTimeInputInZoneToIso(date, "Europe/Bratislava");
     if (!purchasedAt) {
       setError("Dátum a čas: zadaná hodnota nie je platná.");
       return;
     }
-    setPending(true);
+    setAction("save");
     setError("");
     try {
       const response = await companyFetch(`/api/purchases/${purchase.id}`, {
@@ -71,7 +74,7 @@ export function PurchaseAdminForm({
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Požiadavku sa nepodarilo dokončiť.");
     } finally {
-      setPending(false);
+      setAction(null);
     }
   }
 
@@ -98,6 +101,7 @@ export function PurchaseAdminForm({
   }
 
   async function remove() {
+    if (pending) return;
     if (!reason.trim()) {
       setDeleteReasonInvalid(true);
       setError("Dôvod úpravy: zadajte dôvod pred zmazaním nákupu.");
@@ -105,7 +109,7 @@ export function PurchaseAdminForm({
       return;
     }
     if (!window.confirm("Nákup sa označí ako zmazaný a jeho body sa prestanú započítavať. Pokračovať?")) return;
-    setPending(true);
+    setAction("delete");
     setError("");
     try {
       const response = await companyFetch(`/api/purchases/${purchase.id}`, {
@@ -118,7 +122,7 @@ export function PurchaseAdminForm({
       router.replace("/app/nakupy?includeDeleted=true");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Požiadavku sa nepodarilo dokončiť.");
-      setPending(false);
+      setAction(null);
     }
   }
 
@@ -195,9 +199,10 @@ export function PurchaseAdminForm({
             </p>;
           })() : null}
           <div className="mt-4 flex flex-wrap gap-3">
-            <button className={primaryButton} type="submit" disabled={pending}>{pending ? "Ukladám…" : "Uložiť zmeny"}</button>
-            <button className={dangerButton} type="button" disabled={pending} onClick={() => void remove()}>
-              Zmazať nákup
+            <button aria-busy={action === "save"} className={primaryButton} type="submit" disabled={pending}>
+              <ActionLabel busy={action === "save"} pending="Ukladám…">Uložiť zmeny</ActionLabel></button>
+            <button aria-busy={action === "delete"} className={dangerButton} type="button" disabled={pending} onClick={() => void remove()}>
+              <ActionLabel busy={action === "delete"} pending="Mažem nákup…">Zmazať nákup</ActionLabel>
             </button>
             <Link className={secondaryButton} href="/app/nakupy">Späť na nákupy</Link>
           </div>

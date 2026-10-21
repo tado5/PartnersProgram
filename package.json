@@ -15,7 +15,7 @@
     "test:browser": "ACCEPTANCE_BROWSER=1 node tests/run-phase5a.mjs",
     "test:phase10": "node --import tsx --test tests/phase10.test.ts",
     "test:acceptance": "ACCEPTANCE_PRIVACY=1 ACCEPTANCE_LOGO=1 ACCEPTANCE_EXPORTS=1 ACCEPTANCE_BROWSER=1 node tests/run-phase5a.mjs",
-    "test:unit": "node --import tsx --test tests/privacy.test.ts tests/company-logo.test.ts tests/phase6.test.ts tests/phase8.test.ts tests/phase9.test.ts tests/phase10.test.ts tests/phase11.test.ts tests/form-validation.test.ts",
+    "test:unit": "node --import tsx --test tests/privacy.test.ts tests/company-logo.test.ts tests/phase6.test.ts tests/phase8.test.ts tests/phase9.test.ts tests/phase10.test.ts tests/phase11.test.ts tests/form-validation.test.ts tests/partner-card.test.ts tests/token-crypto.test.ts",
     "test:phase11": "npm run test:unit && ACCEPTANCE_PHASE11=1 npm run test:acceptance",
     "test:logo": "node --import tsx --test tests/company-logo.test.ts",
     "db:generate": "prisma generate",
@@ -48,6 +48,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@zxing/library": "^0.23.0",
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^20",
     "@types/pdfkit": "^0.17.6",

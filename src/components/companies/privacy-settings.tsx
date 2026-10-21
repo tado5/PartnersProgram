@@ -4,6 +4,7 @@ import { useId, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { useCompanyApi } from "@/components/company-context";
+import { ActionLabel } from "@/components/action-label";
 import { ValidatedForm } from "@/components/validated-form";
 import { formatApiError } from "@/lib/validation-errors";
 import { hasPrivacyTemplatePlaceholders, privacyTemplateBody, PRIVACY_TEMPLATE_URL } from "@/lib/privacy-template";
@@ -38,14 +39,16 @@ export function PrivacySettings({ initial, companySlug, companyName, companyIco,
   });
   const [dirty, setDirty] = useState(!initial.draft || !initial.draft.controllerName || !initial.draft.body ||
     (!initial.draft.controllerIco && !!companyIco));
-  const [busy, setBusy] = useState(false);
+  const [action, setAction] = useState<"save" | "publish" | null>(null);
+  const busy = action !== null;
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const publishHelpId = useId();
   const hasPlaceholders = hasPrivacyTemplatePlaceholders(fields.body);
 
   async function change(publish: boolean) {
-    setBusy(true);
+    if (busy) return;
+    setAction(publish ? "publish" : "save");
     setError("");
     setMessage("");
     try {
@@ -77,7 +80,7 @@ export function PrivacySettings({ initial, companySlug, companyName, companyIco,
     } catch {
       setError("Požiadavku sa nepodarilo dokončiť. Skontrolujte pripojenie.");
     } finally {
-      setBusy(false);
+      setAction(null);
     }
   }
 
@@ -101,7 +104,7 @@ export function PrivacySettings({ initial, companySlug, companyName, companyIco,
     </p> : <p className="mt-3 rounded-md bg-amber-50 p-3 text-sm text-amber-900">
       Bez publikovaného oznámenia nie je možné registrovať nových partnerov. Existujúce karty a nákupy zostávajú funkčné.
     </p>}
-    <ValidatedForm className="mt-4 space-y-4" onSubmit={(event) => { event.preventDefault(); void change(false); }}>
+    <ValidatedForm aria-busy={busy} className="mt-4 space-y-4" onSubmit={(event) => { event.preventDefault(); void change(false); }}>
       <fieldset disabled={readOnly || busy} className="min-w-0 space-y-4">
         {([
           ["controllerName", "Prevádzkovateľ", 150],
@@ -149,12 +152,12 @@ export function PrivacySettings({ initial, companySlug, companyName, companyIco,
         </p> : null}
       </fieldset>
       {!readOnly ? <div className="flex flex-wrap gap-3">
-        <button disabled={busy} className="rounded-md bg-stone-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
-          Uložiť návrh
+        <button aria-busy={action === "save"} disabled={busy} className="rounded-md bg-stone-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+          <ActionLabel busy={action === "save"} pending="Ukladám návrh…">Uložiť návrh</ActionLabel>
         </button>
-        <button type="button" aria-describedby={publishHelpId} disabled={busy || dirty || !state.draft || hasPlaceholders} onClick={() => void change(true)}
+        <button type="button" aria-busy={action === "publish"} aria-describedby={publishHelpId} disabled={busy || dirty || !state.draft || hasPlaceholders} onClick={() => void change(true)}
           className="rounded-md border border-amber-800 px-4 py-2 text-sm font-semibold text-amber-900 disabled:opacity-50">
-          Publikovať oznámenie
+          <ActionLabel busy={action === "publish"} pending="Publikujem oznámenie…">Publikovať oznámenie</ActionLabel>
         </button>
       </div> : <p className="text-sm text-stone-600">Ako superadmin máte iba náhľad oznámenia.</p>}
       {!readOnly ? <p id={publishHelpId} className="text-xs text-stone-600">

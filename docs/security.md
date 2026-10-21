@@ -9,15 +9,19 @@
 |---|---|
 | Náhodný a nepredikovateľný | `crypto.randomBytes(32)` → base64url (43 znakov, 256 bitov) |
 | Bez osobných údajov | token neobsahuje ID, kód ani meno; URL má tvar `{APP_BASE_URL}/k/{token}` |
-| V DB iba odtlačok | `token_hash = SHA-256(token)`; v UI a logoch sa používa iba `token_hint` (6 znakov) |
-| Viac tokenov na partnera | povolené (napr. QR + NFC), každý sa deaktivuje samostatne |
+| Uloženie v DB | `token_hash = SHA-256(token)` na overenie; nové tokeny majú aj AES-256-GCM šifrovanú hodnotu `token_encrypted`, nikdy plaintext; zoznam a logy iba metadáta/hint (6 znakov) |
+| Aktívne tokeny na partnera | najviac jeden QR a jeden NFC v rámci firmy; nezávislé odkazy na tú istú identitu a históriu, každý sa deaktivuje samostatne |
 | Deaktivovaný token nefunguje | platí iba pri aktívnom tokene, partnerovi aj prevádzkujúcej firme; deaktivácia tokenu je nevratná |
-| Opätovná tlač | vždy nový token; pôvodný sa ponúkne na deaktiváciu (predvolene áno) |
+| Opätovná tlač | opätovné otvorenie aktívneho tokenu bez nového vydania; náhrada iba výslovným výberom starého tokenu rovnakého typu a s dôvodom, atomicky bez zmeny partnera/histórie |
 | Okamžitý účinok | verejná karta sa necachuje (`Cache-Control: no-store`); odpoveď má bezpečnostné hlavičky |
 | Ochrana proti hádaniu | obmedzenie počtu požiadaviek na `/k/*`, `/api/public/*`, `/api/scan/resolve` (predvolene 30/min/IP) a rovnaká 404 pre všetky neplatné stavy |
-| NFC karta | NTAG213/215, NDEF URL záznam, po zápise **uzamknúť proti prepisu** |
+| NFC karta | NTAG213/215, NDEF URI (URL) záznam; fyzický čip sa automaticky nezapisuje, **uzamknúť proti prepisu až po overení načítania** |
 
-Plný token existuje iba v odpovedi pri vygenerovaní (na tlač QR a zápis NFC) a nikde sa neukladá.
+Plný token sa vracia pri vydaní a cez same-origin `POST /api/tokens/{tokenId}/open` iba adminovi alebo superadminovi s explicitným firemným kontextom. Firma, partner aj token musia byť aktívni; cudzie/neaktívne objekty vrátia neutrálnu 404. Zoznam vracia iba metadáta. Odpovede vydania, otvorenia a PDF exportu používajú `no-store`; token nesmie preniknúť do logov ani auditu. Otvorenie audituje `token.open` iba s typom/hintom; PDF `export.partner_card` nevydáva nový token.
+
+`TOKEN_ENCRYPTION_KEY` je samostatný 256-bitový kľúč (64 hex znakov; `openssl rand -hex 32`), oddelený od `AUTH_SECRET` aj DB. Musí byť nastavený pred vydávaním a otváraním; chýbanie vráti `503 TOKEN_KEY_MISSING`. AES-256-GCM associated data viažu obálku na `companyId`, `partnerId`, `type`, `tokenHash`; nesprávny kľúč alebo poškodená obálka vráti 500 s bezpečnou správou bez hodnoty, ciphertextu či URL. Kľúč musí zostať stabilný a zálohovaný oddelene; výmena bez riadeného prešifrovania znemožní otvorenie starších obálok.
+
+Staré hash-only tokeny nemožno rekonštruovať: otvorenie vráti `409 TOKEN_NOT_RECOVERABLE`; podporuje sa iba výslovná náhrada, nie import/obnova hodnoty. Vydanie pri nevybranom aktívnom tokene rovnakého typu vráti `409 ACTIVE_TOKEN_EXISTS`, neaktuálny výber `409 TOKEN_SELECTION_CHANGED`. Transakčný zámok firmy a unikátny DB index `(company_id, partner_id, active_type)` s insert/update triggermi bránia súbežnému vydaniu viacerých aktívnych tokenov rovnakého typu.
 
 Mesačný odznak (Q15) sa počíta serverovo iba z netto súm nezmazaných nákupov konkrétneho partnera a firmy; verejná karta vráti iba agregované sumy, aktuálnu úroveň a históriu udelených odznakov. Každý partner môže získať odznak pri dosiahnutí firemnej hranice; neexistuje kvóta ani poradie medzi partnermi. Hranice sú predvolene vypnuté. Po uzavretí mesiaca sa uloží nemenný snapshot tieru, obratu, výpočtového základu a použitej hranice; staršie odznaky ostanú označené ako brutto, nové ako netto. Aplikačný DB účet nemá právo historické snapshoty meniť ani mazať. Uzatvárací endpoint je dostupný iba s náhodným bearer secretom, kontroluje sa konštantným časom a je limitovaný podľa IP.
 
@@ -55,7 +59,7 @@ Mesačný odznak (Q15) sa počíta serverovo iba z netto súm nezmazaných náku
 |---|---|---|---|---|
 | Zoznam a správa firiem, prvý admin | ✅ | ❌ | ❌ | ❌ |
 | Správa partnerov | ✅ vo vybranej firme | ✅ vlastná firma | iba vyhľadanie vo vlastnej firme, maskovaný telefón | ❌ |
-| Tokeny – generovanie, deaktivácia | ✅ vo vybranej firme | ✅ vlastná firma | ❌ | ❌ |
+| Tokeny – generovanie, otvorenie, náhrada, deaktivácia, tlač karty | ✅ vo vybranej firme | ✅ vlastná firma | ❌ | ❌ |
 | Sken a zápis nákupu | ✅ vo vybranej firme | ✅ vlastná firma | ✅ vlastná firma | ❌ |
 | Úprava a zmazanie nákupu | ✅ s dôvodom | ✅ vlastná firma, s dôvodom | ❌ | ❌ |
 | Nastavenie firemného limitu potvrdenia | ✅ vo vybranej firme | ✅ vlastná firma | ❌ | ❌ |
@@ -97,19 +101,20 @@ Mesačný odznak (Q15) sa počíta serverovo iba z netto súm nezmazaných náku
 |---|---|
 | Nákupy | `purchase.create`, `purchase.update`*, `purchase.delete`* |
 | Partneri | `partner.create`, `partner.update`, `partner.deactivate`*, `partner.activate`, `partner.privacy_provided` |
-| Tokeny | `token.create`, `token.deactivate`* |
+| Tokeny | `token.create`, `token.deactivate`*, `token.open` (iba typ/hint) |
 | Používatelia | `user.create`, `user.update`, `user.password_reset` |
 | Prihlásenie | `auth.login`, `auth.login_failed`, `user.password_change` |
-| Exporty | `export.csv` (typ a filtre); `export.report_pdf` (obdobie `month`/`from`/`to`, typ partnera) |
+| Exporty | `export.csv` (typ a filtre); `export.report_pdf` (obdobie `month`/`from`/`to`, typ partnera); `export.partner_card` (bez tokenu, ciphertextu a URL) |
 | Firmy | `company.create`, `company.update`, `company.deactivate`*, `company.activate`, `company.logo_update`, `company.logo_delete`, `company.privacy_draft_update`, `company.privacy_publish` |
 | Superadmin | `company.context_select` (vstup do firemného programu) |
 
 \* povinný `reason`. Pri úpravách sa ukladajú `old_values` aj `new_values`.
-**Nikdy sa neukladá:** heslo, `password_hash`, plný token. Pred uložením sa auditové JSON hodnoty filtrujú: tajné kľúče sa vynechajú a kontaktné údaje, interné poznámky a nákupové poznámky sa nahradia značkou „Skryté“. Historické nemenné záznamy sa spätne neprepisujú; ich citlivé polia sa pri zobrazení/API filtrujú.
+**Do auditu sa nikdy neukladá:** heslo, `password_hash`, plný token, ciphertext ani tokenová URL. Pred uložením sa auditové JSON hodnoty filtrujú: tajné kľúče sa vynechajú a kontaktné údaje, interné poznámky a nákupové poznámky sa nahradia značkou „Skryté“. Historické nemenné záznamy sa spätne neprepisujú; ich citlivé polia sa pri zobrazení/API filtrujú.
 
 Firemné udalosti majú `company_id` danej firmy aj pri zásahu superadmina; `user_id` je vždy skutočný aktér. Platformové udalosti bez konkrétnej firmy majú `company_id = NULL` a sú prístupné iba superadminovi. Firemný admin nikdy nevidí platformový audit ani audit inej firmy. `/app/audit` a `GET /api/audit-logs` sú iba na čítanie a vyžadujú admina alebo superadmina vo výslovne vybranej firme; výsledky sú stránkované a filtrované v rámci tejto firmy. `/superadmin/audit` je prístupný iba superadminovi a zobrazuje samostatne platformové udalosti alebo audit jedinej vybranej firmy. Historický audit zostáva nemenný aj pri migrácii (pozri [data-model](data-model.md#izolácia-väzieb-a-migrácia-fáza-5a)).
 
 ## 5. Verejná karta – iba na čítanie
+- URL je bearer odkaz: ktokoľvek, kto ho získa (aj z QR, NFC, exportu alebo zdieľania), vidí verejnú históriu nákupov partnera. Neudeľuje žiadne právo zapisovať; nákup stále vyžaduje oprávnenú firemnú session.
 - Iba GET; žiadne formuláre, server actions ani zápisové API na verejných cestách (iné metódy vrátia 405).
 - DTO sa skladá výlučne z povolených polí a sumy sú označené ako s DPH, bez DPH a sadzba použitá pri nákupe; body aj odznaky používajú netto sumu. `companyName` označuje prevádzkovateľa programu; interné `companyId` sa nezverejňuje.
 - **Interná poznámka, kontakty, IČO, predavač a zmazané nákupy sa nikdy nezobrazujú.**

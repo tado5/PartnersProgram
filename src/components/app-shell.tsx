@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 
 import { DocumentLink } from "@/components/company-context";
+import { ActionLabel } from "@/components/action-label";
 
 const icons = {
   dashboard: LayoutDashboard,
@@ -61,6 +62,19 @@ export function AppShell({
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState("");
+  async function logout() {
+    if (signingOut) return;
+    setSigningOut(true);
+    setSignOutError("");
+    try {
+      await signOut({ redirectTo: "/login" });
+    } catch {
+      setSignOutError("Odhlásenie sa nepodarilo. Skúste to znova.");
+      setSigningOut(false);
+    }
+  }
   const mobileMenuRef = useRef<HTMLElement>(null);
   const mobileTriggerRef = useRef<HTMLButtonElement>(null);
   const currentItem = items
@@ -182,13 +196,18 @@ export function AppShell({
         <button
           ref={mobileTriggerRef}
           type="button"
-          onClick={() => signOut({ redirectTo: "/login" })}
-          title={compact ? "Odhlásiť" : undefined}
+          disabled={signingOut}
+          aria-busy={signingOut}
+          onClick={() => void logout()}
+          title={compact ? signingOut ? "Odhlasujem…" : "Odhlásiť" : undefined}
           className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-stone-600 transition hover:bg-stone-100 hover:text-stone-950 ${compact ? "justify-center px-2" : ""}`}
         >
-          <LogOut aria-hidden className="size-5 shrink-0" />
-          <span className={compact ? "sr-only" : ""}>Odhlásiť</span>
+          {signingOut ? <ActionLabel busy compact={compact} pending="Odhlasujem…">{null}</ActionLabel> : <>
+            <LogOut aria-hidden className="size-5 shrink-0" />
+            <span className={compact ? "sr-only" : ""}>Odhlásiť</span>
+          </>}
         </button>
+        {signOutError ? <p role="alert" className="px-3 text-sm text-red-700">{signOutError}</p> : null}
       </div>
     );
   }

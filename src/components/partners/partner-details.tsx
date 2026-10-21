@@ -5,6 +5,7 @@ import { useState, type SubmitEvent } from "react";
 
 import { refreshPartnerViews } from "@/app/app/partneri/actions";
 import { useCompanyApi } from "@/components/company-context";
+import { ActionLabel } from "@/components/action-label";
 import { ValidatedForm } from "@/components/validated-form";
 import { formatApiError } from "@/lib/validation-errors";
 
@@ -37,6 +38,7 @@ export function PartnerDetails({ partner }: { partner: Partner }) {
   const [pending, setPending] = useState(false);
 
   async function changeStatus(action: "activate" | "deactivate") {
+    if (pending) return;
     setPending(true);
     setError("");
     try {
@@ -147,9 +149,10 @@ export function PartnerDetails({ partner }: { partner: Partner }) {
               <button
                 className="w-full rounded-lg border border-[color:var(--color-pink)]/45 bg-[color:var(--color-pink)]/10 px-4 py-2.5 text-sm font-semibold text-white hover:bg-[color:var(--color-pink)]/20 disabled:opacity-50"
                 disabled={pending}
+                aria-busy={pending}
                 type="submit"
               >
-                Deaktivovať partnera
+                <ActionLabel busy={pending} pending="Deaktivujem partnera…">Deaktivovať partnera</ActionLabel>
               </button>
               {error ? <p aria-live="polite" className="text-sm text-red-700">{error}</p> : null}
             </ValidatedForm>
@@ -157,10 +160,11 @@ export function PartnerDetails({ partner }: { partner: Partner }) {
             <button
               className="mt-4 w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
               disabled={pending}
+              aria-busy={pending}
               onClick={() => void changeStatus("activate")}
               type="button"
             >
-              Aktivovať partnera
+              <ActionLabel busy={pending} pending="Aktivujem partnera…">Aktivovať partnera</ActionLabel>
             </button>
           )}
           {!partner.isActive && error ? <p aria-live="polite" className="mt-3 text-sm text-red-700">{error}</p> : null}

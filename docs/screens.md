@@ -9,6 +9,18 @@ Legenda: **SA** = superadmin, **A** = admin, **P** = predavač, **Pa** = partner
 
 ## 1. Používateľské flow
 
+### Spätná väzba počas operácií
+
+Asynchrónne akcie zobrazujú konkrétny priebeh (napr. „Vytváram účet…“, „Deaktivujem partnera…“,
+„Načítavam URL pre NFC…“) so stavovým textom a indikátorom. Indikátor rešpektuje obmedzenie
+pohybu (`prefers-reduced-motion`); text zostáva viditeľný aj bez animácie. Ovládacie prvky
+blokujú opakované odoslanie a označujú priebeh cez `aria-busy`. Vyhľadávanie partnerov
+ponecháva pôvodné výsledky počas načítavania a zobrazuje stav nad zoznamom. Skener oznamuje
+spúšťanie kamery/NFC aj overovanie karty; čakanie na NFC možno zastaviť.
+Ukladanie a mazanie majú oddelený priebeh na správnom tlačidle. Pri chybe spojenia sa zobrazí
+chyba a ovládanie sa opäť sprístupní; odhlásenie a zmena firemného kontextu signalizujú
+priebeh až do navigácie.
+
 ### 1.0 Superadmin – nová firma a správa programu
 ```
 Login → Firmy → Pridať firmu (názov, slug, voliteľné IČO, prvý admin)
@@ -42,13 +54,16 @@ Partner naskenuje QR / priloží NFC svojím telefónom → /k/{token} → karta
 
 ### 1.3 Admin – nový partner a karta
 ```
-Partneri → Nový partner → Uložiť → Detail → „Vygenerovať QR“
-   → jednorazový dialóg: stiahnuť PNG/SVG, tlačiť kartu, skopírovať URL pre NFC
-   → (voliteľne) „Vygenerovať NFC token“ → URL zapísať na kartu a kartu uzamknúť
+Partneri → Nový partner → Uložiť → Detail → „Vytvoriť kartu“ → okno → „Vytvoriť“
+   → detaily tokenu: náhľad, PNG/SVG QR, predná/zadná strana SVG/PDF, zdieľať alebo kopírovať URL
+   → (voliteľne) „Použiť aj ako NFC kartu“ → „Aktivovať NFC“ → okno → „Vytvoriť“ → jeho URL zapísať ako NDEF URI
+   → overiť načítanie správnej karty → až potom NFC uzamknúť
 ```
+QR a NFC majú nezávislé odkazy, ale otvárajú údaje a históriu toho istého partnera. Aktívny môže byť najviac jeden token každého typu pre partnera v danej firme.
 
 ### 1.4 Admin – opätovná tlač, strata karty, vratka
-- **Opätovná tlač QR:** Detail → „Vytlačiť QR znova“ → nový token, pole „Deaktivovať pôvodný QR“ je predvolene zaškrtnuté.
+- **Opätovná tlač QR:** Detail → aktívny token → otvoriť detaily → náhľad/stiahnutie/tlač tej istej karty, bez vydania nového tokenu.
+- **Výslovná náhrada:** vybrať existujúci aktívny token rovnakého typu na deaktiváciu a uviesť dôvod → potvrdiť náhradu. Starý token sa atomicky vyradí a nový náhodný token ukazuje na toho istého partnera; jeho história sa nemení. Bez výslovného výberu sa vydanie pri existujúcom aktívnom tokene odmietne (`ACTIVE_TOKEN_EXISTS`); pri neaktuálnom výbere (`TOKEN_SELECTION_CHANGED`) obnoviť zoznam a znovu potvrdiť. Žiadna tichá náhrada.
 - **Strata NFC karty:** Detail → token → „Deaktivovať“ (s dôvodom). Ostatné tokeny fungujú ďalej.
 - **Vratka alebo oprava:** Detail → nákup → Upraviť alebo Zmazať → **povinný dôvod** → zápis do auditu.
 
@@ -92,10 +107,13 @@ Partneri → Nový partner → Uložiť → Detail → „Vygenerovať QR“
 ### 2.4 Detail partnera – `/app/partneri/[id]`
 - **Kto:** A; SA po výslovnom výbere firmy.
 - **Zobrazuje:** údaje vrátane internej poznámky; súhrn (body, obrat s DPH aj bez DPH, aktuálny mesiac); mesačný odznak a históriu ocenení (počet mesiacov za každý tier, mesiac a obrat bez DPH); **tokeny** (typ, označenie, hint, stav, posledné použitie); históriu nákupov vrátane hrubej/netto sumy, použitej sadzby a zmazaných nákupov (označené); audit partnera.
-- **Akcie:** upraviť, deaktivovať; vygenerovať QR alebo NFC token; vytlačiť QR znova; deaktivovať token; pridať nákup; upraviť alebo zmazať nákup (s dôvodom); export CSV.
+- **Akcie:** upraviť, deaktivovať; vygenerovať QR alebo NFC token, výslovne nahradiť existujúci; otvoriť aktívny token a znova vytlačiť tú istú kartu; nezávisle deaktivovať token; pridať nákup; upraviť alebo zmazať nákup (s dôvodom); export CSV.
+- **Jedna partnerská karta:** navonok jedna sekcia s tlačidlom „Vytvoriť kartu“, po vydaní „Otvoriť kartu“. Vytvorenie s voliteľným označením vydá iba QR; NFC sa nevytvára automaticky. Jedno spoločné okno obsahuje náhľad, tlač a zdieľanie vždy cez QR prístup. Rozbaliteľné „Použiť aj ako NFC kartu“ umožní výslovne aktivovať NFC, načítať a skopírovať samostatnú URL a zobraziť návod na zápis; negeneruje druhú tlačovú grafiku. „Správa prístupov“ obsahuje oddelenú výmenu/deaktiváciu QR a NFC. Pri nahradení je povinné potvrdenie a dôvod; po úspechu sa vráti spoločné okno. Zrušenie prípravného okna nevydá token a vráti pôvodnú kartu. Pri iba aktívnom NFC možno otvoriť kartu aj bez QR a vytvoriť QR neskôr. Po deaktivácii QR sa náhľad a stiahnutia skryjú, NFC zostane dostupné. Export PDF prijíma iba aktívny QR token, nikdy NFC. Počas odosielania je zavretie zablokované, fokus zostáva v aktuálnom okne.
 - **Údaje:** `GET /api/partners/{id}`, `/tokens`, `/purchases`, `GET /api/audit-logs?partnerId=`.
-- **Dialóg po vygenerovaní tokenu:** QR náhľad, PNG/SVG, tlač, skopírovanie URL pre NFC. Upozornenie: „Po zatvorení sa QR už nedá znova zobraziť.“ Opätovné vydanie môže deaktivovať staré tokeny rovnakého typu; dôvod deaktivácie je povinný.
-- **NFC:** aplikácia poskytne URL a návod na zápis NDEF URL záznamu na NTAG213/215 a následné uzamknutie karty; fyzický zápis vyžaduje kompatibilný zapisovač.
+- **Detaily po vytvorení aj opätovnom otvorení aktívneho tokenu:** samostatný náhľad prednej a zadnej strany plastovej QR karty (na počítači vedľa seba, na mobile pod sebou). Predná: logo/názov firmy, meno a kód partnera; zadná: QR na bielom podklade, pokyn na predloženie a kód. Obe strany možno stiahnuť ako SVG aj PDF zo spoločného SVG zdroja. PDF má dve strany rozmeru 85,60 × 53,98 mm alebo dve A4 s kartou uprostred a orezovými značkami. Tlačiť na 100 %, bez prispôsobenia; obojstrannú tlač najprv overiť skúšobným hárkom. Export má 600 dpi RGB grafiku, bez spadávky/CMYK profilu; nejde o univerzálny výrobný podklad pre tlačiarne kariet. Samostatný QR je rozbaliteľný, s PNG/SVG na stiahnutie. Dostupné sú systémové zdieľanie, ak ho zariadenie podporuje, kopírovanie odkazu ako náhrada a otvorenie verejnej karty. Náhľad, opätovné otvorenie ani export nevydávajú ďalší token.
+- **Dostupnosť a súkromie:** zoznam obsahuje iba metadáta; detaily načíta `POST /api/tokens/{tokenId}/open` pre A alebo SA vo výslovne vybranej firme. Vyžaduje aktívnu firmu, partnera aj token. Starý token iba s hashom nemožno znovu zobraziť (`TOKEN_NOT_RECOVERABLE`); UI vysvetlí výslovnú náhradu bez zmeny partnera a histórie. Import/obnova starej hodnoty sa nepodporuje. Chýbajúci šifrovací kľúč (`TOKEN_KEY_MISSING`) vyžaduje konfiguráciu správcom, nie nové vydanie. Odkaz aj stiahnuté QR/karty treba chrániť: ktokoľvek s odkazom vidí verejnú históriu nákupov, nemá však právo zapisovať.
+- **Rozmer a vzhľad tlačenej karty:** ID-1, 85,60 × 53,98 mm; náhľad sa prispôsobuje obrazovke, nie fyzickej veľkosti. Zaoblenie náhľadu zodpovedá polomeru 3,18 mm. Podtlač používa čierny základ, modré/fialové a jemné tyrkysové odlesky a sklenené panely v štýle aplikácie; QR ostáva na bielom podklade. „PDF karty · 85,60 × 53,98 mm“ má dve malé strany vo veľkosti karty. „PDF na tlač · A4“ má dve A4, označenie strany, rozmer, orezové značky a 50 mm kontrolnú mierku. Počas prípravy sa na zvolenom tlačidle zobrazí loader a text „Pripravujem PDF…“, oba exporty sú zablokované a stavová správa vysvetľuje čakanie aj automatické spustenie sťahovania. Pri chybe sa tlačidlá znova sprístupnia na opakovanie. Veľkosť vloženej grafiky zostáva rovnaká v oboch exportoch. Priblíženie PDF prehliadača neurčuje rozmer tlače; použiť „Skutočná veľkosť“ / 100 %, nie prispôsobenie strane.
+- **NFC:** detaily poskytujú samostatnú NFC URL a návod na zápis NDEF URI (URL) záznamu na NTAG213/215. Aplikácia fyzický čip automaticky nezapisuje; treba kompatibilný zapisovač. **Uzamknúť proti prepisu až po overení**, že načítanie otvorí správnu verejnú kartu. Deaktivácia NFC nemení QR a naopak.
 
 ### 2.5 Pridanie / úprava partnera – `/app/partneri/novy`, `/app/partneri/[id]/upravit`
 - **Kto:** A.

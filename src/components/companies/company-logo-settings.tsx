@@ -6,6 +6,7 @@ import Image from "next/image";
 import { FileImage, Upload } from "lucide-react";
 
 import { useCompanyApi } from "@/components/company-context";
+import { ActionLabel } from "@/components/action-label";
 import { ValidatedForm } from "@/components/validated-form";
 import { formatApiError } from "@/lib/validation-errors";
 
@@ -14,7 +15,8 @@ export function CompanyLogoSettings({ logoUrl, companyName, readOnly }: {
 }) {
   const router = useRouter();
   const { companyFetch } = useCompanyApi();
-  const [busy, setBusy] = useState(false);
+  const [action, setAction] = useState<"PUT" | "DELETE" | null>(null);
+  const busy = action !== null;
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [selectedFile, setSelectedFile] = useState<{ name: string; size: number } | null>(null);
@@ -25,7 +27,8 @@ export function CompanyLogoSettings({ logoUrl, companyName, readOnly }: {
   }
 
   async function change(method: "PUT" | "DELETE", body?: FormData) {
-    setBusy(true);
+    if (busy) return;
+    setAction(method);
     setError("");
     setMessage("");
     try {
@@ -40,7 +43,7 @@ export function CompanyLogoSettings({ logoUrl, companyName, readOnly }: {
     } catch {
       setError("Požiadavku sa nepodarilo dokončiť. Skontrolujte pripojenie.");
     } finally {
-      setBusy(false);
+      setAction(null);
     }
   }
 
@@ -55,7 +58,7 @@ export function CompanyLogoSettings({ logoUrl, companyName, readOnly }: {
       {logoUrl ? <Image unoptimized src={logoUrl} width={192} height={64} alt={`Logo ${companyName}`}
         className="h-16 w-full max-w-48 object-contain object-left" /> : <strong className="break-words">{companyName}</strong>}
     </div>
-    {!readOnly ? <ValidatedForm onSubmit={(event) => void save(event)} className="space-y-3">
+    {!readOnly ? <ValidatedForm aria-busy={busy} onSubmit={(event) => void save(event)} className="space-y-3">
       <label data-validation-control className={`relative flex min-h-36 min-w-0 flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-primary/50 bg-primary/5 p-5 text-center transition-colors focus-within:outline-2 focus-within:outline-offset-4 focus-within:outline-primary ${busy ? "opacity-60" : "cursor-pointer hover:border-primary hover:bg-primary/10"}`}>
         <input className="absolute inset-0 h-full w-full cursor-pointer rounded-xl opacity-0 disabled:cursor-not-allowed"
           aria-label="Vybrať logo" aria-describedby="company-logo-file-help"
@@ -82,11 +85,12 @@ export function CompanyLogoSettings({ logoUrl, companyName, readOnly }: {
       </label>
       {selectedFile ? <p className="text-xs text-white/65">Súbor je vybraný. Zmenu uložíte tlačidlom „Nahrať logo“.</p> : null}
       <div className="flex flex-wrap gap-3">
-        <button disabled={busy} className="min-h-11 rounded-md bg-stone-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
-          {busy ? "Ukladám…" : "Nahrať logo"}
+        <button aria-busy={action === "PUT"} disabled={busy} className="min-h-11 rounded-md bg-stone-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+          <ActionLabel busy={action === "PUT"} pending="Nahrávam logo…">Nahrať logo</ActionLabel>
         </button>
-        {logoUrl ? <button type="button" disabled={busy} onClick={() => void change("DELETE")}
-          className="min-h-11 rounded-md border border-red-300 px-4 py-2 text-sm font-semibold text-red-800 disabled:opacity-60">Odstrániť logo</button> : null}
+        {logoUrl ? <button type="button" aria-busy={action === "DELETE"} disabled={busy} onClick={() => void change("DELETE")}
+          className="min-h-11 rounded-md border border-red-300 px-4 py-2 text-sm font-semibold text-red-800 disabled:opacity-60">
+          <ActionLabel busy={action === "DELETE"} pending="Odstraňujem logo…">Odstrániť logo</ActionLabel></button> : null}
       </div>
     </ValidatedForm> : null}
     {error ? <p role="alert" className="mt-3 text-sm text-red-700">{error}</p> : null}

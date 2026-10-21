@@ -1,14 +1,15 @@
 import { createHash, randomBytes } from "node:crypto";
-import QRCode from "qrcode";
 import { NextResponse } from "next/server";
 
 import { env } from "@/lib/env";
 import { tokenCreateSchema } from "@/lib/schemas";
 import { record } from "@/server/audit";
-import { hasSameOrigin, parseUserId, readJson } from "@/server/auth/http";
+import { hasSameOrigin, MAX_QUERY_ID, parseUserId, readJson } from "@/server/auth/http";
 import { isAuthContext, requireCompanyRole, lockCompanyContext, CompanyInactiveError, contextError, withCompanyErrors } from "@/server/auth/session";
 import { prisma } from "@/server/db";
 import { listPartnerTokens } from "@/server/repositories/tokens";
+import { encryptToken, TokenKeyMissingError } from "@/server/token-crypto";
+import { tokenArtwork } from "@/server/token-artwork";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -20,6 +21,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
 
   const partnerId = parseUserId((await params).id);
   if (!partnerId) return invalidPartnerIdResponse();
+  if (partnerId > MAX_QUERY_ID) return notFoundResponse();
 
   const partnerExists = await prisma.partner.findFirst({
     where: { id: partnerId, companyId: authorization.companyId },
@@ -53,26 +55,26 @@ async function createToken(request: Request, { params }: RouteContext) {
 
   const partnerId = parseUserId((await params).id);
   if (!partnerId) return invalidPartnerIdResponse();
+  if (partnerId > MAX_QUERY_ID) return notFoundResponse();
   const parsed = await readJson(request, tokenCreateSchema);
   if ("response" in parsed) return parsed.response;
+  if (parsed.data.deactivateTokenIds?.some((id) => id > MAX_QUERY_ID)) {
+    return contextError("NOT_FOUND", "Token sa nenašiel.", 404);
+  }
 
   const token = randomBytes(32).toString("base64url");
   const tokenHash = createHash("sha256").update(token).digest("hex");
-  const url = new URL(`/k/${token}`, `${env.APP_BASE_URL.replace(/\/+$/, "")}/`).toString();
-  const [qrSvg, qrPng] = await Promise.all([
-    QRCode.toString(url, {
-      type: "svg",
-      errorCorrectionLevel: "H",
-      margin: 2,
-      width: 320,
-    }),
-    QRCode.toDataURL(url, {
-      type: "image/png",
-      errorCorrectionLevel: "H",
-      margin: 2,
-      width: 512,
-    }),
-  ]);
+  let tokenEncrypted;
+  try {
+    tokenEncrypted = encryptToken(token, {
+      companyId: authorization.companyId, partnerId, type: parsed.data.type, tokenHash,
+    }, env.TOKEN_ENCRYPTION_KEY);
+  } catch (error) {
+    if (!(error instanceof TokenKeyMissingError)) throw error;
+    console.error("Token issuance unavailable: TOKEN_ENCRYPTION_KEY is not configured.");
+    return contextError("TOKEN_KEY_MISSING", "Správca servera musí nastaviť šifrovací kľúč pre QR/NFC karty.", 503);
+  }
+  const artwork = await tokenArtwork(token);
 
   let result;
   try {
@@ -90,6 +92,16 @@ async function createToken(request: Request, { params }: RouteContext) {
           where: { id: { in: deactivatedIds }, companyId: authorization.companyId, partnerId },
         });
         if (members !== deactivatedIds.length) return { error: "TOKEN_NOT_FOUND" as const };
+      }
+      const activeTokens = await tx.partnerToken.findMany({
+        where: { companyId: authorization.companyId, partnerId, type: parsed.data.type, isActive: true },
+        select: { id: true },
+      });
+      if (activeTokens.some((active) => !deactivatedIds.includes(active.id))) {
+        if (deactivatedIds.length) return { error: "TOKEN_SELECTION_CHANGED" as const };
+        return { error: "ACTIVE_TOKEN_EXISTS" as const };
+      }
+      if (deactivatedIds.length) {
         const selected = await tx.partnerToken.findMany({
           where: {
             companyId: authorization.companyId,
@@ -144,6 +156,7 @@ async function createToken(request: Request, { params }: RouteContext) {
           partnerId,
           type: parsed.data.type,
           tokenHash,
+          tokenEncrypted,
           tokenHint: token.slice(0, 6),
           label: parsed.data.label,
           createdByUserId: authorization.user.id,
@@ -155,6 +168,9 @@ async function createToken(request: Request, { params }: RouteContext) {
           label: true,
           isActive: true,
           createdAt: true,
+          deactivatedAt: true,
+          deactivationReason: true,
+          lastUsedAt: true,
         },
       });
       await record(
@@ -188,6 +204,9 @@ async function createToken(request: Request, { params }: RouteContext) {
   }
 
   if (result.error === "PARTNER_NOT_FOUND") return notFoundResponse();
+  if (result.error === "ACTIVE_TOKEN_EXISTS") {
+    return contextError("ACTIVE_TOKEN_EXISTS", "Partner už má aktívny prístup tohto typu. Otvorte ho alebo potvrďte jeho nahradenie.", 409);
+  }
   if (result.error === "TOKEN_NOT_FOUND") {
     return contextError("NOT_FOUND", "Token sa nenašiel.", 404);
   }
@@ -201,10 +220,7 @@ async function createToken(request: Request, { params }: RouteContext) {
   return NextResponse.json(
     {
       token: { ...result.token, id: result.token.id.toString() },
-      value: token,
-      url,
-      qrSvg,
-      qrPng,
+      ...artwork,
     },
     { status: 201, headers: { "Cache-Control": "no-store" } },
   );

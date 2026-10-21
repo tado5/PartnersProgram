@@ -14,6 +14,10 @@ const nextConfig: NextConfig = {
       "./node_modules/dejavu-fonts-ttf/ttf/DejaVuSans-Bold.ttf",
       "./node_modules/dejavu-fonts-ttf/LICENSE",
     ],
+    "/api/partners/*/card": [
+      "./node_modules/dejavu-fonts-ttf/ttf/DejaVuSans.ttf",
+      "./node_modules/dejavu-fonts-ttf/LICENSE",
+    ],
   },
   turbopack: {
     rules: {

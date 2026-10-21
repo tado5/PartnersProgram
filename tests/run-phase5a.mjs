@@ -64,6 +64,7 @@ try {
   sql(readFileSync("prisma/migrations/20261014100000_audit_company_created_index/migration.sql", "utf8"));
   sql(readFileSync("prisma/migrations/20261015110000_company_logo/migration.sql", "utf8"));
   sql(readFileSync("prisma/migrations/20261015120000_privacy_notices/migration.sql", "utf8"));
+  sql(readFileSync("prisma/migrations/20261020090000_reopenable_partner_tokens/migration.sql", "utf8"));
   assert.equal(sql("SELECT amount,net_amount,vat_rate_percent,points FROM purchases WHERE id=5;").trim(), "19.99\t16.25\t23.00\t16");
   assert.equal(sql("SELECT COLUMN_DEFAULT IS NULL FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='purchases' AND COLUMN_NAME='vat_rate_percent';").trim(), "1");
   assert.equal(sql("SELECT COUNT(DISTINCT INDEX_NAME) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='audit_logs' AND INDEX_NAME='audit_logs_company_created_idx';").trim(), "1");
@@ -95,6 +96,7 @@ try {
     ...process.env, ...defaults, NODE_ENV: "production", LOCAL_QUICK_LOGIN_ENABLED: "false",
     APP_BASE_URL: "https://partners.example.invalid", AUTH_URL: "http://127.0.0.1:3017",
     AUTH_SECRET: randomBytes(48).toString("base64url"), AUTH_TRUST_HOST: "true",
+    TOKEN_ENCRYPTION_KEY: randomBytes(32).toString("hex"),
     DATABASE_URL: url("europodlahy_app", values.DB_APP_PASSWORD),
     MIGRATE_DATABASE_URL: url("europodlahy_migrate", values.DB_MIGRATE_PASSWORD),
     SHADOW_DATABASE_URL: url("europodlahy_migrate", values.DB_MIGRATE_PASSWORD, shadowDatabase),
@@ -115,6 +117,11 @@ try {
   });
   const result = await new Promise((resolve) => child.once("exit", resolve));
   assert.equal(result, 0, "Phase 5A regression tests failed.");
+  const tokenLifecycle = spawn("node", ["--import", "tsx", "--test", "tests/token-lifecycle-acceptance.test.ts"], {
+    env: { ...env, DATABASE_URL: env.TEST_DATABASE_URL }, stdio: "inherit",
+  });
+  const tokenLifecycleResult = await new Promise((resolve) => tokenLifecycle.once("exit", resolve));
+  assert.equal(tokenLifecycleResult, 0, "QR/NFC lifecycle acceptance tests failed.");
   if (process.env.ACCEPTANCE_PRIVACY === "1") {
     const privacy = spawn("node", ["--import", "tsx", "--test", "tests/privacy-acceptance.test.ts"], {
       env: { ...env, DATABASE_URL: env.TEST_DATABASE_URL }, stdio: "inherit",

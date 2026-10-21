@@ -60,6 +60,10 @@ Pred seedovaním vyplňte v `.env` `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` a
 - Healthcheck `healthcheck.sh --connect --innodb_initialized`.
 
 ## 6. Pripojenie aplikácie na DB
+Migrácia `20261020090000_reopenable_partner_tokens` pridáva `token_encrypted VARCHAR(255) NULL`, nullable enum `active_type`, insert/update triggre a unikátny index `(company_id, partner_id, active_type)`: najviac jeden aktívny QR a jeden aktívny NFC token na partnera vo firme. Aktuálne údaje sú podľa zadania testovacie; pri duplicitách nechá aktívny najnovší token podľa `created_at`/`id` a ostatné deaktivuje s pevným migračným dôvodom. Fyzicky nič nemaže ani nemení nákupy. **Nepoužiť túto migráciu nezmenenú na reálne predexistujúce produkčné dáta** – tie vyžadujú zámerný výber zachovaného tokenu. Pred `npm run db:deploy` overiť dáta, vytvoriť zálohu a skúsiť migráciu na kópii; MariaDB DDL nemusí byť transakčné.
+
+Pred vydaním alebo opätovným otvorením tokenov nastavte `TOKEN_ENCRYPTION_KEY` podľa časti 7. Staré hash-only tokeny sa spätne nezašifrujú: ich URL držiteľom fungujú, ak ostali aktívne, ale otvorenie v administrácii vráti `409 TOKEN_NOT_RECOVERABLE`. UI ponúka výslovnú náhradu pre toho istého partnera, bez zmeny histórie; import/obnova starej hodnoty sa nepodporuje.
+
 Migrácia `20261015120000_privacy_notices` pridáva tabuľky návrhov, verziovaných oznámení a histórie informovania. Pred spustením novej verzie aplikácie aplikujte `npm run db:deploy` a potom `npm run db:permissions` (nové tabuľkové práva; oznámenia a história iba `SELECT, INSERT`). Staré údaje sa neprepisujú, ani sa nevytvára predvolený právny text či domnelá evidencia. **Každá firma musí pred registráciou ďalších partnerov publikovať vlastné právne posúdené oznámenie.** Existujúce karty a nákupy zostávajú funkčné. DB zálohy obsahujú aj verzie a históriu informovania.
 
 Migrácia `20261015110000_company_logo` pridáva iba nullable stĺpce `logo_data` a `logo_version` do `companies`; pred spustením novej verzie aplikácie ju aplikujte štandardným `npm run db:deploy`. Logá sú súčasťou databázových záloh, nepotrebujú upload adresár ani nový verejný storage. Existujúce firmy bez loga používajú svoj názov. Pri obnove DB sa obnovia aj logá; pri rollbacku aplikácie stĺpce nemažte.
@@ -84,6 +88,7 @@ Prisma klient je singleton. `/api/health` overuje `SELECT 1`.
 | `DATABASE_URL`, `MIGRATE_DATABASE_URL`, `SHADOW_DATABASE_URL`, `TEST_DATABASE_URL` | DB pripojenia; shadow DB používa iba `prisma migrate dev` |
 | `MARIADB_ROOT_PASSWORD`, `DB_APP_PASSWORD`, `DB_MIGRATE_PASSWORD` | heslá pre DB a init skript |
 | `AUTH_SECRET` | minimálne 32 náhodných bajtov |
+| `TOKEN_ENCRYPTION_KEY` | samostatný stabilný AES-256-GCM kľúč, presne 64 hex znakov; vygenerovať `openssl rand -hex 32`, odlišný od `AUTH_SECRET` a DB hesiel, uložený a zálohovaný oddelene od DB |
 | `AUTH_URL`, `AUTH_TRUST_HOST` | Auth.js (za proxy `true`) |
 | `SESSION_SELLER_IDLE_MINUTES`, `SESSION_SELLER_MAX_HOURS` | `60`, `10` |
 | `SESSION_ADMIN_IDLE_MINUTES`, `SESSION_ADMIN_MAX_HOURS` | `30`, `8` |
@@ -96,6 +101,7 @@ Prisma klient je singleton. `/api/health` overuje `SELECT 1`.
 | `NEXT_TELEMETRY_DISABLED` | `1` |
 
 Aplikácia pri štarte validuje použité aplikačné premenné cez Zod. V produkcii odmietne `APP_BASE_URL` s `localhost` alebo `http://`.
+`TOKEN_ENCRYPTION_KEY` musí byť nakonfigurovaný pred vydávaním aj opätovným otváraním tokenov; bez neho operácie vrátia `503 TOKEN_KEY_MISSING`. Nesprávny kľúč alebo poškodená AES-256-GCM obálka spôsobí 500 s bezpečnou správou. Kľúč pri redeployi ani obnove náhodne nevymieňajte: bez pôvodného kľúča sa uložené tokeny nedajú znovu otvoriť. Associated data viažu obálku na firmu, partnera, typ a hash tokenu. Prípadná rotácia potrebuje riadené prešifrovanie, nie iba zmenu premennej.
 `DATABASE_URL` je pre aplikáciu povinná. `MIGRATE_DATABASE_URL` vyžaduje konfigurácia Prisma pre databázové príkazy. `SHADOW_DATABASE_URL` sa nastavuje iba vo vývojovej konfigurácii Prisma pre `migrate dev`; pri `NODE_ENV=production` sa ignoruje a na serveri ju vynechajte. Shadow databáza nikdy nesmie byť totožná s hlavnou databázou. V produkcii používajte iba `npm run db:deploy`, nie `db:migrate` ani reset.
 
 ## 8. Build
@@ -127,12 +133,13 @@ Pri buildovaní s `NODE_ENV=production` nastavte `APP_BASE_URL` na HTTPS doménu
 2. nahratie nového obrazu,
 3. `prisma migrate deploy` (jednorazový kontajner s `MIGRATE_DATABASE_URL`),
 4. `docker compose -f docker-compose.prod.yml up -d app`,
-5. smoke test: `/api/health`, login, sken QR, nákup, karta, report, export.
+5. smoke test: `/api/health`, login, sken QR, nákup, karta, report, export; s nakonfigurovaným tokenovým kľúčom aj vydanie a opätovné otvorenie testovacieho tokenu bez nového vydania, nezávislosť QR/NFC a stiahnutie oboch strán karty.
 
 **Rollback:** predchádzajúci tag obrazu; pri nespätnej migrácii aj obnova zálohy.
 
 ## 10. Zálohy a monitoring
 - Denný `mariadb-dump` (kontajner alebo cron), komprimovaný, uchovávaný 30 dní, kópia mimo servera.
+- DB záloha obsahuje tokenové hashe aj šifrované obálky, nie `TOKEN_ENCRYPTION_KEY`. Stabilný kľúč zálohujte bezpečne **oddelene od DB** s obmedzeným prístupom; pri teste obnovy overte znovuotvorenie tokenu s pôvodným kľúčom. Kľúč, hodnoty tokenov, ciphertext ani tokenové URL nepatria do logov či auditu.
 - Test obnovy raz za mesiac.
 - Docker healthcheck, externý uptime check na `/api/health`, logy kontajnerov.
 - Mesačné odznaky uzatvára plánovaná úloha v prvý deň mesiaca po polnoci podľa `Europe/Bratislava`
@@ -146,7 +153,11 @@ Pri buildovaní s `NODE_ENV=production` nastavte `APP_BASE_URL` na HTTPS doménu
 ## 11. Pred tlačou kariet (kontrolný zoznam)
 - [ ] `APP_BASE_URL=https://partners.europodlahy.sk` je nastavené v produkčnom prostredí.
 - [ ] HTTPS na produkčnej doméne funguje.
+- [ ] `TOKEN_ENCRYPTION_KEY` je nastavený, stabilný a samostatne zálohovaný; opätovné otvorenie tokenu funguje.
 - [ ] Testovací QR a NFC token otvoria správnu kartu na iPhone aj Androide.
+- [ ] Opätovná tlač z otvorených detailov nevydá nový token; PDF oboch strán má 85,60 × 53,98 mm alebo kartu uprostred A4 s orezovými značkami. Tlač 100 %, skúšobný hárok; výstup je 600 dpi RGB bez spadávky/CMYK profilu, nie univerzálny výrobný podklad.
+- [ ] NFC URL zapísať ako NDEF URI na NTAG213/215 kompatibilným zapisovačom, overiť načítanie a až potom uzamknúť; aplikácia čip automaticky nezapisuje.
+- [ ] QR/NFC, zdieľané odkazy a exporty chrániť: bearer odkaz sprístupňuje verejnú históriu nákupov, nikdy právo na zápis.
 - [ ] Zálohy bežia.
 
 ## 12. Nasadenie viacfiremnej verzie (fáza 5A)

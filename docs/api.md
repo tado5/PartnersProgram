@@ -16,7 +16,7 @@ API tvoria Route Handlers v `src/app/api/` v tej istej Next.js aplikácii.
 - Firemné endpointy nikdy nevracajú dáta všetkých firiem: A/P majú firmu zo serverom overeného účtu; SA musí poslať `X-Company-Id` overené serverom. Bez výberu firmy SA dostane `400 COMPANY_CONTEXT_REQUIRED`. Firemné payloady nesmú prideľovať `companyId` ani globálne roly; pokus o zmenu kontextu A/P sa odmietne.
 - Firemné payloady sú strict Zod schémy. UI SA posiela tiež `X-Company-Selection`, ktoré musí zodpovedať podpísanej cookie aktuálneho výberu; starý formulár vráti `409 COMPANY_CONTEXT_CHANGED`. Samostatný API klient SA musí vždy explicitne zadať `X-Company-Id` a nespolieha sa na page cookie.
 - Všetky ID vrátane vnorených ID a filtrov musia patriť aktuálnej firme; cudzie ID vráti `404 NOT_FOUND`. Čítania, vyhľadávania, súčty, CSV, audit a konflikty idempotencie sú filtrované rovnako.
-- Neaktívna firma zablokuje firemný prístup A/P (`403 COMPANY_INACTIVE`). SA môže firmu spravovať a čítať/exportovať históriu; vydanie tokenu a vytvorenie/úprava/zmazanie nákupu vrátia `409 COMPANY_INACTIVE`.
+- Neaktívna firma zablokuje firemný prístup A/P (`403 COMPANY_INACTIVE`). SA môže firmu spravovať a čítať/exportovať históriu; vydanie tokenu a vytvorenie/úprava/zmazanie nákupu vrátia `409 COMPANY_INACTIVE`. Otvorenie tokenu má osobitný kontrakt neutrálnej 404 aj pri neaktívnej firme (časť 3).
 
 ## 0. Firmy a superadmin
 | Metóda | Endpoint | Rola | Účel |
@@ -94,11 +94,22 @@ Endpoint na fyzické mazanie neexistuje.
 | Metóda | Endpoint | Rola | Účel |
 |---|---|---|---|
 | GET | `/api/partners/{id}/tokens` | A | zoznam (typ, hint, označenie, stav, posledné použitie) – **nikdy plný token** |
-| POST | `/api/partners/{id}/tokens` | A | `{ type: 'qr'\|'nfc', label?, deactivateTokenIds?: string[], deactivationReason? }` → vytvorí nový token; voliteľne v tej istej transakcii deaktivuje vybrané aktívne tokeny rovnakého typu s povinným dôvodom. **Iba raz** vráti `{ token, value, url, qrSvg, qrPng }`. |
+| POST | `/api/partners/{id}/tokens` | A | `{ type: 'qr'\|'nfc', label?, deactivateTokenIds?: string[], deactivationReason? }` → nový náhodný token; pri výslovnej náhrade atomicky deaktivuje vybrané aktívne tokeny rovnakého typu s povinným dôvodom. Vráti `{ token, value, url, qrSvg, qrPng }`. |
+| POST | `/api/tokens/{tokenId}/open` | A | opätovné otvorenie aktívneho tokenu aktívneho partnera a firmy; `{ token, value, url, qrSvg, qrPng }`, `no-store`, rovnaký pôvod; audit `token.open` iba s typom a hintom |
 | POST | `/api/tokens/{tokenId}/deactivate` | A | `{ reason }` – nevratná deaktivácia |
+| POST | `/api/partners/{id}/card` | A | `{ token, format: 'card'\|'a4' }` → PDF s prednou a zadnou stranou (2 strany). `card`: 85,60 × 53,98 mm; `a4`: karta vycentrovaná s orezovými značkami. Vyžaduje plný **QR** token z vytvorenia alebo opätovne otvorených detailov; overí jeho hash, typ, aktívny stav a príslušnosť partnerovi aj firme. NFC token vráti neutrálnu 404: tlačová grafika nesmie závisieť od NFC prístupu. Nevydáva ani nemení tokeny. Rovnaký pôvod, `no-store`, audit `export.partner_card` bez tokenu; neplatná karta = neutrálna 404. |
 | POST | `/api/scan/resolve` | A, P | `{ token }` → `{ partnerId, code, displayName, type, tokenId, source }`; obmedzenie počtu požiadaviek (30/min/IP); neplatný token, token inej firmy alebo neaktívny partner/firma vráti neutrálnu 404 |
 
-Odpoveď pri vytvorení tokenu má `Cache-Control: no-store`; `value` a URL sa vrátia iba v tejto odpovedi. QR SVG/PNG sa generujú serverovo ešte pred uložením tokenu, aby zlyhanie generovania nezanechalo token, ktorý si admin nevie stiahnuť. QR sa nedá vygenerovať neskôr, pretože token sa neukladá. Opätovná tlač = nový token.
+**Schválený kontrakt opätovného otvorenia a náhrady:** jeden partner má jednu trvalú identitu a históriu. V rámci `(companyId, partnerId)` môže byť aktívny najviac jeden `qr` a jeden `nfc` token. Majú nezávislé URL na rovnaké partnerské údaje a deaktivujú sa nezávisle. Všetky tokenové akcie A povoľujú aj SA, ale iba s explicitným firemným kontextom; predavač nemá prístup.
+
+Vytvorenie nikdy ticho nenahrádza existujúci token. Ak niektorý aktívny token rovnakého typu nie je výslovne uvedený v `deactivateTokenIds`, vráti `409 ACTIVE_TOKEN_EXISTS`. Neaktuálny výber na deaktiváciu vráti `409 TOKEN_SELECTION_CHANGED`; náhrada vyžaduje `deactivationReason`. Pod transakčným zámkom firmy sa starý token deaktivuje a vytvorí nový náhodný token pre **toho istého partnera**; pri chybe sa neuloží ani časť operácie. Nákupy, body a história sa nemenia, druhý typ tokenu zostáva platný. Limit navyše vynucuje DB unikátny index cez triggermi odvodený `active_type` (pozri [data-model](data-model.md#3-partner_tokens)).
+
+Zoznam vracia iba metadáta, nikdy hodnotu, URL ani šifrovanú obálku. Vytvorenie a otvorenie majú `Cache-Control: no-store`; QR SVG/PNG sa generujú serverovo. Nové tokeny majú SHA-256 odtlačok aj AES-256-GCM šifrovanú hodnotu v DB, nie čitateľný token. Vydanie aj otvorenie vyžadujú samostatný `TOKEN_ENCRYPTION_KEY`; chýbajúci kľúč = `503 TOKEN_KEY_MISSING`, nesprávny kľúč alebo poškodená obálka = 500 s bezpečnou správou bez tajomstiev. Associated data viažu šifrovanie na `companyId`, `partnerId`, `type` a `tokenHash`.
+Pri vydaní sa QR SVG/PNG pripravia pred uložením tokenu, aby zlyhanie generovania nezanechalo čiastočne vydaný token. Plná hodnota sa pre PDF posiela iba v tele POST, nie v URL exportnej požiadavky alebo audite.
+
+Otvorenie cudzieho alebo neaktívneho tokenu, partnera či firmy vráti neutrálnu 404. Starý aktívny token iba s hashom vráti `409 TOKEN_NOT_RECOVERABLE`: hash nemožno spätne rekonštruovať, UI ponúkne výslovnú náhradu, nie import ani obnovu starej hodnoty. Úspešné otvorenie audituje `token.open` iba s typom/hintom; audit nikdy neobsahuje hodnotu, ciphertext ani URL.
+
+Z otvorených detailov možno kedykoľvek znova stiahnuť QR PNG/SVG aj prednú a zadnú stranu karty ako SVG/PDF bez nového tokenu. Náhľad a PDF používajú spoločný SVG zdroj; PDF obsahuje 600 dpi RGB grafiku, bez spadávky a CMYK profilu. Verejná URL je bearer odkaz: sprístupňuje verejnú históriu nákupov komukoľvek, kto ho má, **nikdy neoprávňuje na zápis**.
 
 ## 4. Nákupy
 | Metóda | Endpoint | Rola | Účel |

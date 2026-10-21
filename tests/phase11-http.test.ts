@@ -9,6 +9,7 @@ import type { User } from "@prisma/client";
 import ts from "typescript";
 import { prisma } from "../src/server/db";
 import { generatePartnerCode } from "../src/server/partners";
+import { encryptToken } from "../src/server/token-crypto";
 
 const base = "http://127.0.0.1:3017";
 const origin = "https://partners.example.invalid";
@@ -44,6 +45,7 @@ const endpoints: Endpoint[] = [
   { route: "/api/partners/[id]", method: "GET", access: "tenant-admin" },
   { route: "/api/partners/[id]", method: "PATCH", access: "tenant-admin" },
   { route: "/api/partners/[id]/activate", method: "POST", access: "tenant-admin" },
+  { route: "/api/partners/[id]/card", method: "POST", access: "tenant-admin" },
   { route: "/api/partners/[id]/deactivate", method: "POST", access: "tenant-admin" },
   { route: "/api/partners/[id]/privacy", method: "GET", access: "privacy" },
   { route: "/api/partners/[id]/privacy", method: "POST", access: "privacy" },
@@ -71,6 +73,7 @@ const endpoints: Endpoint[] = [
   { route: "/api/superadmin/company-context", method: "POST", access: "superadmin" },
   { route: "/api/superadmin/company-context", method: "DELETE", access: "superadmin" },
   { route: "/api/tokens/[tokenId]/deactivate", method: "POST", access: "tenant-admin" },
+  { route: "/api/tokens/[tokenId]/open", method: "POST", access: "tenant-admin" },
   { route: "/api/users", method: "GET", access: "tenant-admin" },
   { route: "/api/users", method: "POST", access: "tenant-admin", success: 201 },
   { route: "/api/users/[id]", method: "PATCH", access: "tenant-admin" },
@@ -197,6 +200,10 @@ test("phase 11 complete endpoint role guards and tenant boundaries", async (t) =
       const token = await prisma.partnerToken.create({ data: {
         companyId: company.id, partnerId: partner.id, type: "qr",
         tokenHash: createHash("sha256").update(value).digest("hex"), tokenHint: value.slice(0, 6),
+        tokenEncrypted: encryptToken(value, {
+          companyId: company.id, partnerId: partner.id, type: "qr",
+          tokenHash: createHash("sha256").update(value).digest("hex"),
+        }, process.env.TOKEN_ENCRYPTION_KEY),
         createdByUserId: admin.id,
       } });
       const purchase = await prisma.purchase.create({ data: {
@@ -238,6 +245,7 @@ test("phase 11 complete endpoint role guards and tenant boundaries", async (t) =
         privacy: { noticeId: target.notice.id.toString(), providedAt: new Date().toISOString(), method: "in_person" },
       };
       if (entry.route === "/api/partners/[id]") return { displayName: "Phase11 updated" };
+      if (entry.route === "/api/partners/[id]/card") return { token: target.value, format: "card" };
       if (entry.route.endsWith("/tokens")) return { type: "qr", label: "Phase11 matrix" };
       if (entry.route === "/api/purchases") return {
         partnerId: target.partner.id.toString(), amount: "12.30", partnerPresent: true,
@@ -279,7 +287,19 @@ test("phase 11 complete endpoint role guards and tenant boundaries", async (t) =
           body: new URLSearchParams({ csrfToken: csrf.csrfToken, callbackUrl: `${base}/login` }),
         });
       }
-      return client.request(pathFor(entry, target), initFor(entry, target),
+      let init = initFor(entry, target);
+      if (entry.route.endsWith("/tokens") && entry.method === "POST") {
+        const active = await prisma.partnerToken.findMany({
+          where: { companyId: target.company.id, partnerId: target.partner.id, type: "nfc", isActive: true },
+          select: { id: true },
+        });
+        init = json("POST", {
+          type: "nfc", label: "Phase11 matrix",
+          deactivateTokenIds: active.map((token) => token.id.toString()),
+          ...(active.length ? { deactivationReason: "Phase11 explicit replacement" } : {}),
+        });
+      }
+      return client.request(pathFor(entry, target), init,
         actor === "superadmin" && context && tenant(entry) ? first.company.id : undefined);
     }
 

@@ -14,6 +14,10 @@ Viacfiremná webová aplikácia na správu oddelených partnerských programov, 
 
 **Detail partnera:** po údajoch partnera nasledujú mesačné ocenenia, QR/NFC tokeny, nákupy, evidencia informovania o spracúvaní údajov a nakoniec audit. Pri existujúcej evidencii informovania je formulár skrytý za tlačidlom **Zaznamenať ďalšie poskytnutie / opravu**; nový záznam pôvodnú históriu neprepisuje. Ak evidencia ešte chýba, formulár zostáva otvorený.
 
+**QR/NFC a opätovná tlač – schválený kontrakt:** partner má jednu trvalú identitu a históriu, najviac jeden aktívny QR a jeden aktívny NFC token vo firme. Nezávislé odkazy otvárajú tie isté údaje a deaktivujú sa nezávisle. Admin alebo SA vo výslovne vybranej firme môže aktívny token znova otvoriť cez `POST /api/tokens/{tokenId}/open`: náhľad/stiahnutie QR PNG/SVG, prednej aj zadnej strany karty SVG/PDF, zdieľanie pri podpore, kopírovanie odkazu a otvorenie verejnej karty. Tlač nevydáva nový token; výslovná náhrada vyžaduje výber starého tokenu rovnakého typu a dôvod, atomicky ho vyradí bez zmeny partnera/histórie. Zoznam vracia iba metadáta. Staré hash-only tokeny nemožno rekonštruovať (`TOKEN_NOT_RECOVERABLE`); UI vysvetlí náhradu, nie import/obnovu. Bearer odkaz sprístupňuje verejnú históriu nákupov, **nikdy právo zapisovať**. NFC URL treba fyzicky zapísať ako NDEF URI na NTAG213/215 a uzamknúť až po overení; aplikácia čip automaticky nezapisuje.
+
+Nové tokeny majú hash aj AES-256-GCM šifrovanú hodnotu. Pred vydávaním a otváraním nastavte samostatný stabilný `TOKEN_ENCRYPTION_KEY` (64 hex znakov), zálohovaný oddelene od DB. Migrácia `20261020090000_reopenable_partner_tokens` vynucuje limit aktívnych tokenov; pri súčasných **testovacích** duplicitách zachová najnovší podľa času/ID a ostatné deaktivuje, bez mazania či zmeny nákupov. **Na reálne predexistujúce produkčné dáta ju nemožno použiť nezmenenú:** vyžadujú zámerný výber zachovaného tokenu. Podrobnosti: [API](docs/api.md#3-tokeny), [dátový model](docs/data-model.md#3-partner_tokens), [nasadenie a zálohy](docs/deployment.md).
+
 **Tmavý vzhľad:** spoločné štýly mapujú aj staršie hover utility na priesvitné zvýraznenie a svetlý text. Zoznamy partnerov, výber partnera, exporty a QR/NFC akcie tak pri prejdení myšou neprechádzajú na biele pozadie.
 
 ## Požiadavky
@@ -23,7 +27,7 @@ Viacfiremná webová aplikácia na správu oddelených partnerských programov, 
 
 ## Spustenie
 
-1. Skopírujte `.env.example` do `.env` a vyplňte povinné heslá, `AUTH_SECRET` a DB pripojenia podľa časti **Konfigurácia**.
+1. Skopírujte `.env.example` do `.env` a vyplňte povinné heslá, `AUTH_SECRET`, samostatný `TOKEN_ENCRYPTION_KEY` pre vydávanie/otváranie tokenov a DB pripojenia podľa časti **Konfigurácia**.
 2. Spustite iba databázu: `docker compose up -d db`.
 3. Nainštalujte závislosti lokálne: `npm ci`.
 4. Vytvorte databázy a účty: `npm run db:provision`.
@@ -78,5 +82,7 @@ MIGRATE_DATABASE_URL=mysql://europodlahy_migrate:<DB_MIGRATE_PASSWORD>@127.0.0.1
 SHADOW_DATABASE_URL=mysql://europodlahy_migrate:<DB_MIGRATE_PASSWORD>@127.0.0.1:3308/europodlahy_shadow
 TEST_DATABASE_URL=mysql://europodlahy_migrate:<DB_MIGRATE_PASSWORD>@127.0.0.1:3308/europodlahy_test
 ```
+
+Pre `TOKEN_ENCRYPTION_KEY` vygenerujte **ďalšiu samostatnú hodnotu** cez `openssl rand -hex 32` (presne 64 hex znakov), nepoužívajte `AUTH_SECRET` ani DB heslo. Uchovávajte ju stabilnú medzi nasadeniami a bezpečne zálohujte oddelene od DB. Chýbajúci kľúč blokuje vydanie/otvorenie chybou `503 TOKEN_KEY_MISSING`; nesprávny kľúč či poškodená obálka vráti bezpečnú 500. Náhodná výmena kľúča znemožní znovuotvorenie existujúcich šifrovaných tokenov.
 
 Heslá obsahujúce špeciálne znaky musia byť v URL percent-encoded; hex hodnoty z uvedeného príkazu to nepotrebujú. Pri existujúcej databáze použite jej platné heslá: samotná zmena `.env` ich v databáze nezmení. Pre produkciu nastavte vlastné tajomstvá a správne `APP_BASE_URL`; v CI/CD používajte GitHub Actions Secrets alebo správcu tajomstiev cieľového prostredia.

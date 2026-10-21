@@ -3,6 +3,9 @@ import { NextResponse } from "next/server";
 import { type ZodType } from "zod";
 import { validationFields } from "@/lib/validation-errors";
 
+// Prisma's query engine accepts signed 64-bit IDs even for unsigned SQL columns.
+export const MAX_QUERY_ID = BigInt("9223372036854775807");
+
 export function hasSameOrigin(request: Request) {
   return request.headers.get("origin") === new URL(env.APP_BASE_URL).origin;
 }

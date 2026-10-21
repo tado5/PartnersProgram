@@ -2,6 +2,7 @@
 
 import { useCallback, useState, type FormEvent } from "react";
 import { useCompanyApi } from "@/components/company-context";
+import { ActionLabel } from "@/components/action-label";
 import { ValidatedForm } from "@/components/validated-form";
 import { formatApiError } from "@/lib/validation-errors";
 
@@ -33,45 +34,58 @@ function UserRow({
   const { companyFetch } = useCompanyApi();
   const [temporaryPassword, setTemporaryPassword] = useState("");
   const [message, setMessage] = useState("");
-  const [pending, setPending] = useState(false);
+  const [action, setAction] = useState<"role" | "status" | "reset" | null>(null);
+  const pending = action !== null;
 
   async function update(data: { role?: "admin" | "seller"; isActive?: boolean }) {
-    setPending(true);
+    if (pending) return;
+    setAction(data.role ? "role" : "status");
     setMessage("");
-    const response = await companyFetch(`/api/users/${user.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    });
-    if (!response.ok) {
-      setMessage(await responseError(response));
-    } else {
-      await onChanged();
+    try {
+      const response = await companyFetch(`/api/users/${user.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) {
+        setMessage(await responseError(response));
+      } else {
+        await onChanged();
+      }
+    } catch {
+      setMessage("Požiadavku sa nepodarilo dokončiť. Skontrolujte pripojenie.");
+    } finally {
+      setAction(null);
     }
-    setPending(false);
   }
 
   async function resetPassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setPending(true);
+    if (pending) return;
+    setAction("reset");
     setMessage("");
-    const response = await companyFetch(`/api/users/${user.id}/reset-password`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ temporaryPassword }),
-    });
-    if (!response.ok) {
-      setMessage(await responseError(response));
-    } else {
-      setTemporaryPassword("");
-      setMessage("Heslo bolo resetované. Používateľ sa musí prihlásiť a zmeniť ho.");
-      await onChanged();
+    try {
+      const response = await companyFetch(`/api/users/${user.id}/reset-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ temporaryPassword }),
+      });
+      if (!response.ok) {
+        setMessage(await responseError(response));
+      } else {
+        setTemporaryPassword("");
+        setMessage("Heslo bolo resetované. Používateľ sa musí prihlásiť a zmeniť ho.");
+        await onChanged();
+      }
+    } catch {
+      setMessage("Požiadavku sa nepodarilo dokončiť. Skontrolujte pripojenie.");
+    } finally {
+      setAction(null);
     }
-    setPending(false);
   }
 
   return (
-    <article className="grid gap-4 border-t border-stone-200 py-5 lg:grid-cols-[1fr_auto]">
+    <article aria-busy={pending} className="grid gap-4 border-t border-stone-200 py-5 lg:grid-cols-[1fr_auto]">
       <div>
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="font-semibold text-stone-950">{user.name}</h3>
@@ -120,9 +134,10 @@ function UserRow({
           <button
             className="rounded-md border border-stone-300 px-3 py-2 text-sm font-medium text-stone-700 hover:bg-stone-100 disabled:opacity-50"
             disabled={pending}
+            aria-busy={action === "reset"}
             type="submit"
           >
-            Resetovať heslo
+            <ActionLabel busy={action === "reset"} pending="Resetujem heslo…">Resetovať heslo</ActionLabel>
           </button>
         </ValidatedForm>
         {message ? (
@@ -147,13 +162,17 @@ function UserRow({
           <option value="admin">Admin</option>
           <option value="seller">Predavač</option>
         </select>
+        {action === "role" ? <ActionLabel busy pending="Mením rolu…">{null}</ActionLabel> : null}
         <button
           className="rounded-md border border-stone-300 px-3 py-2 text-sm font-medium text-stone-700 hover:bg-stone-100 disabled:opacity-50"
           disabled={pending}
+          aria-busy={action === "status"}
           onClick={() => void update({ isActive: !user.isActive })}
           type="button"
         >
-          {user.isActive ? "Deaktivovať" : "Aktivovať"}
+          <ActionLabel busy={action === "status"} pending={user.isActive ? "Deaktivujem…" : "Aktivujem…"}>
+            {user.isActive ? "Deaktivovať" : "Aktivovať"}
+          </ActionLabel>
         </button>
       </div>
     </article>
@@ -183,27 +202,33 @@ export function UserAdminPanel({
 
   async function createUser(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isSubmitting) return;
     setIsSubmitting(true);
     setError("");
     const form = event.currentTarget;
     const formData = new FormData(form);
-    const response = await companyFetch("/api/users", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email: formData.get("email"),
-        name: formData.get("name"),
-        role: formData.get("role"),
-        temporaryPassword: formData.get("temporaryPassword"),
-      }),
-    });
-    if (!response.ok) {
-      setError(await responseError(response));
-    } else {
-      form.reset();
-      await loadUsers();
+    try {
+      const response = await companyFetch("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: formData.get("email"),
+          name: formData.get("name"),
+          role: formData.get("role"),
+          temporaryPassword: formData.get("temporaryPassword"),
+        }),
+      });
+      if (!response.ok) {
+        setError(await responseError(response));
+      } else {
+        form.reset();
+        await loadUsers();
+      }
+    } catch {
+      setError("Požiadavku sa nepodarilo dokončiť. Skontrolujte pripojenie.");
+    } finally {
+      setIsSubmitting(false);
     }
-    setIsSubmitting(false);
   }
 
   return (
@@ -231,7 +256,7 @@ export function UserAdminPanel({
         <p className="mt-1 text-sm leading-6 text-stone-600">
           Používateľ sa po prvom prihlásení musí zmeniť dočasné heslo.
         </p>
-        <ValidatedForm className="mt-5 space-y-4" onSubmit={createUser}>
+        <ValidatedForm aria-busy={isSubmitting} className="mt-5 space-y-4" onSubmit={createUser}>
           <label className="block text-sm font-medium text-stone-700">
             Meno
             <input
@@ -282,9 +307,10 @@ export function UserAdminPanel({
           <button
             className="w-full rounded-md bg-stone-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-stone-800 disabled:opacity-50"
             disabled={isSubmitting}
+            aria-busy={isSubmitting}
             type="submit"
           >
-            Vytvoriť účet
+            <ActionLabel busy={isSubmitting} pending="Vytváram účet…">Vytvoriť účet</ActionLabel>
           </button>
         </ValidatedForm>
       </aside>
