@@ -15,6 +15,7 @@ import sharp from "sharp";
 import { prisma } from "../src/server/db";
 import { companyCookieName } from "../src/server/auth/company-cookie";
 import { encryptToken } from "../src/server/token-crypto";
+import { getManualArticles } from "../src/lib/manual";
 
 const base = "http://127.0.0.1:3017";
 const origin = "https://partners.example.invalid";
@@ -184,6 +185,64 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
       companyId: second.id, userId: secondAdmin.id, action: "partner.update", entityType: "partner",
       entityId: otherPartner.id, partnerId: otherPartner.id, newValues: { displayName: "Browser Beta Secret" },
     } });
+
+    await t.test("role manuals cover all chapters and enforce access on desktop and mobile", async () => {
+      const anonymous = await browser.newContext({ ignoreHTTPSErrors: true });
+      contexts.push(anonymous);
+      const response = await anonymous.request.get(`${base}/app/manual`, { maxRedirects: 0 });
+      assert.equal(response.status(), 307);
+      assert.equal(new URL(response.headers().location).pathname, "/login");
+      for (const [email, role] of [
+        [admin.email, "admin"], [seller.email, "seller"], [superadmin.email, "superadmin"],
+      ] as const) {
+        const page = await session(email, role === "seller");
+        const root = role === "superadmin" ? "/superadmin/manual" : "/app/manual";
+        const selectionBefore = (await page.context().cookies()).find((cookie) => cookie.name === companyCookieName)?.value;
+        if (role === "seller") {
+          await page.getByRole("button", { name: "Otvoriť menu", exact: true }).click();
+        }
+        const menu = page.getByRole("navigation", { name: "Hlavné menu" }).filter({ visible: true });
+        await menu.locator("summary").filter({ hasText: "Manuál" }).click();
+        await menu.getByRole("link", { name: "Všetky kapitoly", exact: true }).click();
+        await page.waitForURL(`${origin}${root}`);
+        const chapters = page.getByRole("navigation", { name: "Kapitoly manuálu" });
+        assert.equal(await chapters.getByRole("link").count(), getManualArticles(role).length);
+        assert.equal(await chapters.getByRole("link", { name: /Firmy a prvý administrátor/ }).count(), role === "superadmin" ? 1 : 0);
+        if (role === "seller") {
+          assert.equal(await chapters.getByRole("link", { name: /Prvé nastavenie firmy|Exporty CSV/ }).count(), 0);
+        }
+        for (const article of getManualArticles(role)) {
+          const loaded = await page.goto(`${origin}${root}/${article.slug}`);
+          assert.equal(loaded?.status(), 200, `${role}: ${article.slug}`);
+          await page.getByRole("heading", { name: article.title, exact: true, level: 1 }).waitFor();
+          await page.getByRole("navigation", { name: "Navigácia manuálu" }).waitFor();
+          await noOverflow(page);
+          if (role === "superadmin") {
+            assert.equal(await page.locator('main a[href^="/app/"]').count(), 0);
+          }
+        }
+        for (const path of role === "seller"
+          ? ["/app/manual/nastavenie-firmy", "/app/manual/exporty", "/app/manual/firmy"]
+          : [`${root}/neexistuje`, `${root}/zaciname/dalsia`]) {
+          const denied = await page.goto(`${origin}${path}`);
+          // Next may already have streamed HTTP 200 before the server-side notFound.
+          assert.ok([200, 404].includes(denied!.status()), path);
+          await page.getByRole("heading", { name: "Návod nie je dostupný", level: 1 }).waitFor();
+          assert.equal(await page.locator('meta[name="robots"][content*="noindex"]').count(), 1);
+          assert.equal(await page.getByRole("navigation", { name: "Navigácia manuálu" }).count(), 0);
+          assert.equal(await page.getByRole("link", { name: "Otvoriť nastavenia", exact: true }).count(), 0);
+        }
+        if (role !== "superadmin") {
+          await page.goto(`${origin}/superadmin/manual`);
+          await page.waitForURL(`${origin}/app`);
+        } else {
+          const selectionAfter = (await page.context().cookies()).find((cookie) => cookie.name === companyCookieName)?.value;
+          assert.equal(selectionBefore, undefined);
+          assert.equal(selectionAfter, selectionBefore, "Reading the global manual must not select a company.");
+        }
+        await page.context().close();
+      }
+    });
 
     await t.test("production pages expose a bounded desktop and mobile performance baseline", async () => {
       for (const mobile of [false, true]) {

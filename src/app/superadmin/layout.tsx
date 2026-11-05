@@ -5,6 +5,7 @@ import { AppShell, type ShellNavItem } from "@/components/app-shell";
 import { ClearCompanyContext } from "@/components/companies/company-controls";
 import { companyCookieName, readCompanySelection } from "@/server/auth/company-cookie";
 import { requireSuperadminPage } from "@/server/auth/superadmin";
+import { manualChapters } from "@/lib/manual";
 
 export const instant = false;
 
@@ -12,6 +13,7 @@ const items: ShellNavItem[] = [
   { href: "/superadmin/firmy", label: "Firmy", icon: "companies", document: true },
   { href: "/superadmin/audit", label: "Audit", icon: "audit" },
   { href: "/change-password", label: "Zmeniť heslo", icon: "password" },
+  { href: "/superadmin/manual", label: "Manuál", icon: "manual", children: manualChapters("superadmin", "/superadmin/manual") },
 ];
 
 export default async function SuperadminLayout({ children }: { children: ReactNode }) {

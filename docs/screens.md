@@ -197,6 +197,31 @@ QR a NFC majú nezávislé odkazy, ale otvárajú údaje a históriu toho istéh
 
 ## 3. Navigácia podľa roly
 
+### Používateľský manuál
+
+Posledná položka hlavného menu **Manuál** rozbalí kapitoly podľa prihlásenej
+roly. Odkaz **Všetky kapitoly** otvorí prehľad úloh; jednotlivé kapitoly majú
+vlastnú stránku, kroky, výsledok, upozornenia a súvisiace návody. Na zbalenom
+desktope ikona otvorí prehľad, na mobile je submenu súčasťou vysúvacieho menu.
+
+- `/app/manual` a `/app/manual/[kapitola]`: firemný kontext; predavač má návody
+  pre skenovanie, ručný výber, zápis a kontrolu vlastných dnešných nákupov,
+  body, verejnú kartu, heslo a riešenie problémov. Administrátor navyše
+  nastavenia, používateľov, partnerov, QR/tlač/NFC/náhradu stratenej karty,
+  opravy nákupov, reporty, exporty, audit a ochranu údajov.
+- `/superadmin/manual` a `/superadmin/manual/[kapitola]`: iba superadministrátor,
+  aj bez výberu firmy. Obsahuje globálne aj firemné návody; firemné akcie
+  vyžadujú vstup do programu. Návod vysvetľuje nastavenia vyhradené vlastnému
+  administrátorovi firmy a nedáva superadministrátorovi právo ich meniť.
+- Prístup sa overuje na serveri, nielen skrytím menu. Neznáma alebo pre rolu
+  nedostupná kapitola zobrazí „Návod nie je dostupný“. Pri streamovanej odpovedi
+  môže Next.js zachovať HTTP 200 s not-found obsahom a `noindex`.
+
+Manuál obsahuje všeobecné návody bez údajov konkrétnych partnerov alebo
+tajomstiev. Čítanie nemení firemné údaje ani výber firmy. Zdroj obsahu je
+`src/lib/manual.ts`; pravidlo jeho aktualizácie pri zmenách správania pre všetky
+dotknuté roly je v koreňovom `AGENTS.md`.
+
 ### Informovanie o spracúvaní údajov
 
 **Nastavenia firmy → Ochrana osobných údajov:** admin skontroluje predvyplnený dokument a údaje prevádzkovateľa, uloží návrh a publikuje nemennú verziu. Publikovať možno iba uložený návrh, ktorý sa odvtedy nezmenil. Superadmin má iba náhľad. Text sa zobrazuje bez HTML; predvyplnené právne podmienky a retenčné pravidlá musí firma overiť podľa svojej prevádzky.
