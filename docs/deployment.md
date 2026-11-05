@@ -3,7 +3,8 @@
 > Súvisí s: [IMPLEMENTACNY_PLAN.md](../IMPLEMENTACNY_PLAN.md) · [architecture](architecture.md)
 
 ## 1. Princíp: lokálna aplikácia, databáza v Dockeri
-- **Požiadavky:** Docker Desktop s Docker Compose a Node.js 22 alebo novší s npm.
+- **Požiadavky:** Docker Desktop s Docker Compose a odporúčaný Node.js 24 LTS
+  s npm (rovnaký ako Docker/CI); pri Node.js 22 použite aspoň 22.12 pre Prisma 7.
 - MariaDB beží v Docker kontajneri; Next.js a jeho nástroje bežia lokálne v operačnom systéme.
 - Závislosti sa inštalujú lokálne cez `npm ci`; globálna inštalácia nástrojov projektu netreba.
 - Databázové dáta zostávajú v priečinku projektu (gitignored):
@@ -78,6 +79,27 @@ Migrácia `20261015110000_company_logo` pridáva iba nullable stĺpce `logo_data
 Lokálna aplikácia sa pripája cez `mysql://<user>:<heslo>@127.0.0.1:3308/<db>`.
 Prisma klient je singleton. `/api/health` overuje `SELECT 1`.
 
+Prisma CLI, klient a `@prisma/adapter-mariadb` používajú zhodnú verziu
+**7.10.1**. Datasource URL pre CLI je v `prisma.config.ts`, nie v schéme;
+migrácie čítajú `MIGRATE_DATABASE_URL`, aplikačný JS adaptér iba
+`DATABASE_URL`. Existujúci podporovaný generátor `prisma-client-js` zostáva
+kvôli kompatibilite importov; prechod na Prisma 7 nemení modely ani migračné SQL.
+Runtime, seed aj diagnostika používajú spoločný `src/server/db-adapter.mjs`.
+
+Adaptér percent-dekóduje meno, heslo a databázu a nastavuje UTC (`timezone: Z`).
+Predvolené hodnoty sú pool **10 spojení**, connect timeout **5 s** a
+čakanie na spojenie z poolu **10 s**. URL podporuje iba voliteľné kladné
+celočíselné `connection_limit`, `connect_timeout` a `pool_timeout`
+(časové hodnoty v sekundách). Duplicitné/nepodporované parametre spôsobia chybu,
+nie tiché ignorovanie. Nastavenia starého Rust enginu sa automaticky
+neprenášajú. Zvolený Docker deployment používa súkromnú internú DB sieť;
+externá DB s TLS/socket požiadavkami potrebuje explicitnú konfiguráciu a
+overenie adaptéra, nie odstránenie SSL parametrov alebo vypnutie overenia TLS.
+Jednorazové skripty/testy musia zavolať `$disconnect()`, aby ukončili JS pool.
+Pri porovnaní schémy v Prisma 7 použite
+`prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code`;
+príkaz je read-only, no vyžaduje schválený prístup k cieľovej DB.
+
 ## 7. `.env`
 `.env.example` obsahuje necitlivé vývojové nastavenia a prázdne citlivé hodnoty. Pred spustením vyplňte v lokálnom `.env` heslá, `AUTH_SECRET` a DB URL podľa README. Compose pri chýbajúcom alebo prázdnom DB hesle skončí chybou; predvolené heslá nie sú povolené. Súbor `.env` je gitignored. Tajomstvá pre CI/CD patria do GitHub Actions Secrets alebo správcu tajomstiev, nie do repozitára.
 
@@ -101,14 +123,24 @@ Prisma klient je singleton. `/api/health` overuje `SELECT 1`.
 | `NEXT_TELEMETRY_DISABLED` | `1` |
 
 Aplikácia pri štarte validuje použité aplikačné premenné cez Zod. V produkcii odmietne `APP_BASE_URL` s `localhost` alebo `http://`.
+Produkčné `AUTH_URL` nastavte na rovnaký verejný HTTPS origin ako
+`APP_BASE_URL`, nie na interný HTTP host/port aplikácie. Produkčný Compose to
+nastavuje priamo; prihlasovacie presmerovania proxy tiež používajú
+`APP_BASE_URL`.
 `TOKEN_ENCRYPTION_KEY` musí byť nakonfigurovaný pred vydávaním aj opätovným otváraním tokenov; bez neho operácie vrátia `503 TOKEN_KEY_MISSING`. Nesprávny kľúč alebo poškodená AES-256-GCM obálka spôsobí 500 s bezpečnou správou. Kľúč pri redeployi ani obnove náhodne nevymieňajte: bez pôvodného kľúča sa uložené tokeny nedajú znovu otvoriť. Associated data viažu obálku na firmu, partnera, typ a hash tokenu. Prípadná rotácia potrebuje riadené prešifrovanie, nie iba zmenu premennej.
 `DATABASE_URL` je pre aplikáciu povinná. `MIGRATE_DATABASE_URL` vyžaduje konfigurácia Prisma pre databázové príkazy. `SHADOW_DATABASE_URL` sa nastavuje iba vo vývojovej konfigurácii Prisma pre `migrate dev`; pri `NODE_ENV=production` sa ignoruje a na serveri ju vynechajte. Shadow databáza nikdy nesmie byť totožná s hlavnou databázou. V produkcii používajte iba `npm run db:deploy`, nie `db:migrate` ani reset.
 
 ## 8. Build
 `npm run build` najprv spustí `npm run db:generate` a až po úspešnom
-vygenerovaní Prisma klienta spustí `next build`. Tento krok nemení databázu
-a nenahrádza migrácie. Na hostingu netreba samostatný krok `npm run db:generate`;
-pri inštalácii použite `npm install --include=dev`, aby boli dostupné aj build nástroje.
+vygenerovaní Prisma klienta spustí `next build`. Nakoniec
+`scripts/prepare-standalone.mjs` doplní `public` a `.next/static` do standalone
+balíka; Next.js ich sám nekopíruje. `npm start` spúšťa
+`node .next/standalone/server.js`, teda rovnaký server ako Docker, nie
+nekompatibilný `next start`. Pre lokálny štart možno nastaviť
+`HOSTNAME=127.0.0.1 PORT=3000 npm start`.
+Tieto kroky nemenia databázu a nenahrádzajú migrácie. Na hostingu netreba
+samostatný krok `npm run db:generate`; pri čistej inštalácii použite
+`npm ci --include=dev`, aby boli dostupné aj build nástroje.
 
 V Hostcreatore možno po builde zapnúť krok `npm run %s` s parametrom
 `db:check`. Spustí iba `SELECT 1`, nepotrebuje existujúce aplikačné tabuľky
@@ -122,26 +154,56 @@ npm ci → lint → typecheck → test → prisma generate → next build (outpu
 docker build -t europodlahy-partners:<verzia> .
 ```
 Pri buildovaní s `NODE_ENV=production` nastavte `APP_BASE_URL` na HTTPS doménu. Lokálny `.env` s `http://localhost:3000` je určený pre `npm run dev`.
-`Dockerfile` (multi-stage): `deps` → `builder` → `runner` (`node:22-bookworm-slim`, non-root, `TZ=UTC`, iba standalone výstup, `public`, `prisma`).
+`Dockerfile` (multi-stage): `deps` → `builder` → `runner` (`node:24-bookworm-slim`, non-root, OpenSSL pre Prisma, `TZ=UTC`, iba standalone výstup, `public` a `.next/static`). Build-time DB URL-y sú syntetické a slúžia len konfigurácii Prisma; build nespúšťa migrácie ani sa nepripája na DB. `AUTH_SECRET` použitý pri build-e je neplatný placeholder a runtime ho vždy vyžaduje z produkčného prostredia.
+
+CI používa `npm ci --include=dev` aj pri `NODE_ENV=production`, aby nechýbal
+Prisma CLI, TypeScript, ESLint a testovacie nástroje. Audit gate odmieta
+HIGH/CRITICAL nálezy; aktuálny production-only audit má 0 nálezov, celý strom
+obsahuje 16 MODERATE záznamov vo vývojovom lint nástroji (`minimatch`).
+Nie je to dôkaz nulového rizika ani súhlas s neoverenými override/downgrade.
+Presné výsledky a otvorené podmienky sú v
+[centrálnom checkliste](production-remediation-checklist.md).
 
 ## 9. Deploy (server s Dockerom)
-- `docker-compose.prod.yml`: `app`, `db` (bez verejného portu), `proxy` (Caddy – Let's Encrypt, HSTS, presmerovanie HTTP→HTTPS).
-- Produkčný `.env` na serveri (práva `600`), `APP_BASE_URL` = definitívna doména.
+- `docker-compose.prod.yml`: `app` (non-root, bez publikovaného portu), `db` (iba interná sieť, bez verejného portu), `migrate` (spustí sa len explicitne cez profil `migration`) a `proxy` (`caddy:2.10.2-alpine`, Let's Encrypt, HSTS, presmerovanie HTTP→HTTPS). Databázový init vytvára iba produkčnú DB a oddelené migračné/aplikačné účty; migračný účet má práva iba v aplikačnej DB. Aplikačné tabuľkové práva nastavujú po migrácii existujúce `db:permissions`.
+- Produkčný `.env` na serveri (práva `600`) obsahuje **cesty** k samostatným tajným súborom, nie ich hodnoty. Nastavte `APP_BASE_URL` = definitívna HTTPS doména a tieto premenné na cesty k čitateľným súborom, ktoré vytvorí bezpečný secret manager alebo prevádzkovateľ: `MARIADB_ROOT_PASSWORD_FILE`, `DB_APP_PASSWORD_FILE`, `DB_MIGRATE_PASSWORD_FILE`, `DATABASE_URL_FILE`, `MIGRATE_DATABASE_URL_FILE`, `AUTH_SECRET_FILE`, `TOKEN_ENCRYPTION_KEY_FILE`, `BADGE_CRON_SECRET_FILE`. Vlastníctvo a oprávnenia tajných súborov obmedzte na správcu služby. Súbory URL musia obsahovať príslušné DB účty; URL heslá percent-enkódujte. Compose pripojí každé tajomstvo len službám, ktoré ho potrebujú; runtime aplikácia nedostane migračné ani root prihlasovacie údaje. Entry point načíta hodnoty z read-only secret mountov do runtime procesu; nevypisuje ich. Docker daemon administrátori stále môžu kontrolovať kontajnerové procesy a secret mounty, preto obmedzte prístup k serveru a Docker socketu. Skutočné secret súbory a produkčné hodnoty sa v tomto repozitári nevytvárajú.
+- DNS pre `APP_BASE_URL` musí smerovať na server a firewall musí povoľovať TCP 80/443 (UDP 443 je voliteľný HTTP/3). Caddy nastavuje `X-Real-IP` na IP priameho klienta; aplikačný port nie je publikovaný.
+- Táto konfigurácia počíta s jednou inštanciou aplikácie. Rate limiting je
+  v pamäti procesu, nie spoločný medzi replikami, a reštart ho vynuluje.
+  Pred škálovaním treba overiť a zaviesť spoločné limity na dôveryhodnom
+  ingress-e alebo v spoločnom úložisku; repliky nezapínajte s predpokladom,
+  že súčasný limit platí globálne. Pred Caddy nepridávajte ďalšie proxy bez
+  nového overenia dôveryhodných IP a HTTPS hlavičiek.
+
+Pre každý release vytvorte nemenné tagy obrazu, napr. `partners-program:2026-11-02.1`, a zachovajte tag predchádzajúceho release pre rollback. `APP_IMAGE` a `MIGRATE_IMAGE` sú samostatné hodnoty; v produkčnom prostredí nespoliehajte na predvolené `:local` tagy. Pripravte obrazy:
+```sh
+APP_IMAGE=partners-program:2026-11-02.1 \
+MIGRATE_IMAGE=partners-program-migrate:2026-11-02.1 \
+docker compose -f docker-compose.prod.yml build app migrate
+```
+
+Pri prvej inštalácii DB služba vytvorí prázdnu produkčnú DB. Pred použitím aplikácie je nutné zálohovať/overiť prípadné existujúce dáta, migrovať schému a nastaviť aplikačné práva:
+```sh
+docker compose -f docker-compose.prod.yml --profile migration run --rm migrate
+docker compose -f docker-compose.prod.yml exec -T db bash /docker/grant-app-privileges.sh
+```
+Tieto príkazy spúšťajú DB/migrácie alebo menia DB oprávnenia. Na existujúcej DB ich vykonajte až po schválenej zálohe, kontrole migrácie na kópii a explicitnom schválení prevádzkovateľa. Init skripty sa spúšťajú iba pri prázdnom MariaDB volume; zmena `.env` sama osebe nemení účty v už inicializovanej DB.
 
 **Nasadenie novej verzie:**
-1. záloha DB (`mariadb-dump`),
+1. záloha DB (`./scripts/db-backup.sh`); overte vytvorený súbor cez `./scripts/db-restore-test.sh <backup.sql.gz>`,
 2. nahratie nového obrazu,
 3. `prisma migrate deploy` (jednorazový kontajner s `MIGRATE_DATABASE_URL`),
-4. `docker compose -f docker-compose.prod.yml up -d app`,
+4. `APP_IMAGE=partners-program:2026-11-02.1 docker compose -f docker-compose.prod.yml up -d --no-build app proxy`,
 5. smoke test: `/api/health`, login, sken QR, nákup, karta, report, export; s nakonfigurovaným tokenovým kľúčom aj vydanie a opätovné otvorenie testovacieho tokenu bez nového vydania, nezávislosť QR/NFC a stiahnutie oboch strán karty.
 
-**Rollback:** predchádzajúci tag obrazu; pri nespätnej migrácii aj obnova zálohy.
+**Rollback:** pri chybe kompatibilnej so schémou prepnite `APP_IMAGE` na zachovaný predchádzajúci release a spustite `docker compose -f docker-compose.prod.yml up -d --no-build app proxy`; potom overte healthcheck a smoke scenáre. Pred nasadením release zaznamenajte aktuálny image tag aj schému/migráciu. Ak release aplikoval migráciu, ktorá nie je spätne kompatibilná, nevracajte iba aplikáciu: zastavte zápisy a vykonajte vopred schválený plán obnovy zálohy alebo opravy dopredu. Obnova zálohy do produkcie je deštruktívna a vyžaduje samostatný explicitný súhlas.
 
 ## 10. Zálohy a monitoring
-- Denný `mariadb-dump` (kontajner alebo cron), komprimovaný, uchovávaný 30 dní, kópia mimo servera.
+- Ručná lokálna záloha: `./scripts/db-backup.sh`. Skript dumpuje iba DB `europodlahy` s `--single-transaction`, triggers, routines, events a BLOB support; komprimuje do `.data/backups`, vytvára súbor s právami `0600` v adresári `0700`, testuje gzip stream a publikuje súbor až po úspechu. Používa read-only secret mount z databázového kontajnera; URL/heslo sa nevypisuje. Zálohy obsahujú citlivé osobné a účtovné údaje. Naplánujte denný beh mimo tejto aplikácie, retenčnú dobu 30 dní a šifrovanú kópiu mimo hosta cez schválený secret/backup manager; automatické mazanie a vzdialené úložisko sa v tomto repozitári nenastavujú.
+- Izolovaná skúška: `./scripts/db-restore-test.sh .data/backups/<backup-file>.sql.gz`. Skript kontroluje gzip stream, vytvorí výhradne pomenovaný jednorazový MariaDB kontajner s `--network none` a nový jednorazový volume, obnoví dump a overí počet tabuliek a dokončených Prisma migrácií. Po úspechu aj chybe odstráni iba tento kontajner a jeho presne pomenovaný volume. Skript nikdy neobnovuje do Compose ani inej existujúcej databázy. Nezadávajte cudzie zálohy, ktoré ste neoprávnení čítať.
+- Naplánujte pravidelný (mesačný) restore-test a zaznamenajte dátum, backup ID, obnovený počet tabuliek/migrácií a výsledok bez osobných údajov. Kľúč `TOKEN_ENCRYPTION_KEY` a DB backup musia mať samostatné, riadené obnovovacie postupy; nikdy ho neprikladajte k dumpu.
 - DB záloha obsahuje tokenové hashe aj šifrované obálky, nie `TOKEN_ENCRYPTION_KEY`. Stabilný kľúč zálohujte bezpečne **oddelene od DB** s obmedzeným prístupom; pri teste obnovy overte znovuotvorenie tokenu s pôvodným kľúčom. Kľúč, hodnoty tokenov, ciphertext ani tokenové URL nepatria do logov či auditu.
-- Test obnovy raz za mesiac.
-- Docker healthcheck, externý uptime check na `/api/health`, logy kontajnerov.
+- Docker healthcheck overuje `/api/health` a `SELECT 1`; endpoint vracia iba `{"status":"ok"}` alebo `{"status":"unavailable"}` bez detailov DB. Healthcheck sám neodosiela upozornenia a Compose reštartuje proces po jeho ukončení, nie iba preto, že je označený ako `unhealthy`. Externý HTTPS uptime check na `/api/health`, alerty pre nedostupnosť, DB unhealthy, zaplnenie disku, backup zlyhanie/starnutie a obnovu treba nakonfigurovať v cieľovom monitoringu. Vyberte poskytovateľa, náklady, príjemcov a eskaláciu; v repozitári nie sú vymyslené.
 - Mesačné odznaky uzatvára plánovaná úloha v prvý deň mesiaca po polnoci podľa `Europe/Bratislava`
   volaním `POST /api/cron/close-monthly-badges` s hlavičkou
   `Authorization: Bearer $BADGE_CRON_SECRET`. Koncový bod spracuje predchádzajúci kalendárny

@@ -94,7 +94,7 @@ try {
   const badgeCronSecret = randomBytes(32).toString("base64url");
   const env = {
     ...process.env, ...defaults, NODE_ENV: "production", LOCAL_QUICK_LOGIN_ENABLED: "false",
-    APP_BASE_URL: "https://partners.example.invalid", AUTH_URL: "http://127.0.0.1:3017",
+    APP_BASE_URL: "https://partners.example.invalid", AUTH_URL: "https://partners.example.invalid",
     AUTH_SECRET: randomBytes(48).toString("base64url"), AUTH_TRUST_HOST: "true",
     TOKEN_ENCRYPTION_KEY: randomBytes(32).toString("hex"),
     DATABASE_URL: url("europodlahy_app", values.DB_APP_PASSWORD),
@@ -105,13 +105,30 @@ try {
     BADGE_CRON_SECRET: badgeCronSecret, PHASE7_BADGE_CRON_SECRET: badgeCronSecret,
     RATE_LIMIT_LOGIN_PER_MIN: "1000", RATE_LIMIT_PUBLIC_PER_MIN: "1000",
   };
-  server = spawn("node", ["node_modules/next/dist/bin/next", "start", "-p", "3017"], { env, stdio: "inherit" });
+  server = spawn("node", [".next/standalone/server.js"], {
+    env: { ...env, HOSTNAME: "127.0.0.1", PORT: "3017" }, stdio: "inherit",
+  });
   for (let attempt = 0; attempt < 60; attempt++) {
     if (server.exitCode !== null) throw new Error("Validation server failed to start.");
     try { if ((await fetch("http://127.0.0.1:3017/login")).ok) break; } catch {}
     if (attempt === 59) throw new Error("Validation server did not respond.");
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
+  const loginPage = await fetch("http://127.0.0.1:3017/login");
+  assert.equal(loginPage.status, 200);
+  const loginHtml = await loginPage.text();
+  const assets = [...new Set([...loginHtml.matchAll(/(?:src|href)="([^"]+\.(?:js|css)(?:\?[^"]*)?)"/g)]
+    .map((match) => match[1]).filter((path) => path.startsWith("/_next/static/")))];
+  assert.ok(assets.some((path) => path.includes(".js")), "Login must load JavaScript assets.");
+  assert.ok(assets.some((path) => path.includes(".css")), "Login must load CSS assets.");
+  for (const asset of assets) {
+    const response = await fetch(`http://127.0.0.1:3017${asset}`);
+    assert.equal(response.status, 200, "Standalone login asset must be served.");
+    assert.match(response.headers.get("content-type") ?? "", /\.(?:css)(?:\?|$)/.test(asset)
+      ? /text\/css/ : /(?:application|text)\/javascript/);
+    await response.arrayBuffer();
+  }
+  console.info("Standalone login JavaScript and CSS assets are available.");
   const child = spawn("node", ["--import", "tsx", "--test", "tests/phase5a.test.ts"], {
     env: { ...env, DATABASE_URL: env.TEST_DATABASE_URL }, stdio: "inherit",
   });
@@ -145,7 +162,7 @@ try {
   }
   if (process.env.ACCEPTANCE_EXPORTS === "1") {
     const exports = spawn("node", ["--import", "tsx", "--test", "tests/exports-acceptance.test.ts"], {
-      env: { ...env, DATABASE_URL: env.TEST_DATABASE_URL }, stdio: "inherit",
+      env: { ...env, DATABASE_URL: env.TEST_DATABASE_URL, PHASE5A_SERVER_PID: String(server.pid) }, stdio: "inherit",
     });
     const exportResult = await new Promise((resolve) => exports.once("exit", resolve));
     assert.equal(exportResult, 0, "CSV export acceptance tests failed.");
@@ -166,7 +183,7 @@ try {
   if (deploy.status !== 0) console.error(deploy.stdout, deploy.stderr);
   assert.equal(deploy.status, 0, "Prisma migrate deploy must succeed on a fresh isolated database.");
   const diff = spawnSync("node", ["node_modules/prisma/build/index.js", "migrate", "diff",
-    "--from-schema-datasource", "prisma/schema.prisma", "--to-schema-datamodel", "prisma/schema.prisma",
+    "--from-config-datasource", "--to-schema", "prisma/schema.prisma",
     "--exit-code"], { env: { ...env, DATABASE_URL: env.TEST_DATABASE_URL }, encoding: "utf8" });
   if (diff.status !== 0 && diff.stdout) console.info(diff.stdout);
   assert.equal(diff.status, 0, "Deployed migration must match the Prisma schema.");

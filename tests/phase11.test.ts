@@ -77,3 +77,44 @@ test("public proxy returns 429 at the helper boundary and 405 for writes without
     assert.match(await limited.text(), /Príliš veľa/);
   }
 });
+
+test("health probe is anonymous for GET and rejects other methods", async () => {
+  await limiter;
+  const { proxy } = await import("../src/proxy");
+  assert.equal(proxy(new NextRequest("https://partners.example.invalid/api/health")).status, 200);
+
+  for (const method of ["POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]) {
+    const response = proxy(new NextRequest("https://partners.example.invalid/api/health", { method }));
+    assert.equal(response.status, 405);
+    assert.equal(response.headers.get("allow"), "GET");
+    assert.match(response.headers.get("cache-control")!, /no-store/);
+  }
+});
+
+test("unauthenticated page redirects use the configured public origin in production", async () => {
+  const { proxy } = await import("../src/proxy");
+  const { env } = await import("../src/lib/env");
+  const request = new NextRequest("https://internal.example.invalid:3017/app/audit");
+  const response = proxy(request);
+  const location = new URL(response.headers.get("location")!);
+  assert.equal(location.origin, env.NODE_ENV === "production"
+    ? new URL(env.APP_BASE_URL).origin : request.nextUrl.origin);
+  assert.equal(location.pathname, "/login");
+  assert.equal(location.searchParams.get("callbackUrl"), "/app/audit");
+});
+
+test("page proxy emits a unique nonce-based CSP without allowing unsafe scripts", async () => {
+  const { proxy } = await import("../src/proxy");
+  const request = () => new NextRequest("https://partners.example.invalid/app", {
+    headers: { cookie: "authjs.session-token=test-session" },
+  });
+  const first = proxy(request());
+  const second = proxy(request());
+  const policy = first.headers.get("content-security-policy");
+  assert.ok(policy);
+  assert.match(policy, /script-src 'self' 'nonce-[A-Za-z0-9+/]+=*' 'strict-dynamic'/);
+  assert.match(policy, /object-src 'none'/);
+  assert.match(policy, /frame-ancestors 'none'/);
+  assert.doesNotMatch(policy, /script-src[^;]*'unsafe-(?:inline|eval)'/);
+  assert.notEqual(policy, second.headers.get("content-security-policy"));
+});

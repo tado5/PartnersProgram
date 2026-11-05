@@ -1,4 +1,6 @@
 import { PrismaClient, type Prisma } from "@prisma/client";
+import { createDatabaseAdapter } from "./db-adapter.mjs";
+import { env } from "@/lib/env";
 
 const globalForPrisma = globalThis as typeof globalThis & {
   prisma?: PrismaClient;
@@ -7,6 +9,7 @@ const globalForPrisma = globalThis as typeof globalThis & {
 export const prisma =
   globalForPrisma.prisma ??
   new PrismaClient({
+    adapter: createDatabaseAdapter(env.DATABASE_URL),
     log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
   });
 

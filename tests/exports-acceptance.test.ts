@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { test } from "node:test";
+import { execFileSync } from "node:child_process";
+import { after, test } from "node:test";
 import { hash } from "@node-rs/argon2";
-import { type Company, type User } from "@prisma/client";
+import { Prisma, type Company, type User } from "@prisma/client";
 
 import { companyCookieName, signCompanySelection } from "../src/server/auth/company-cookie";
 import { prisma } from "../src/server/db";
 import { record } from "../src/server/audit";
+import { normalizePartnerSearch } from "../src/server/partners";
 
 const base = "http://127.0.0.1:3017";
 const origin = "https://partners.example.invalid";
@@ -15,6 +17,7 @@ if (!process.env.DATABASE_URL?.endsWith("/europodlahy_5a_validation")) {
   throw new Error("CSV acceptance tests require the dedicated europodlahy_5a_validation database.");
 }
 if (!password) throw new Error("PHASE5A_PASSWORD is required by the phase10 acceptance runner.");
+after(() => prisma.$disconnect());
 
 class Browser {
   cookies = new Map<string, string>();
@@ -169,13 +172,83 @@ test("phase10 CSV database and HTTP acceptance", async (t) => {
       })),
     });
 
-    const response = await browser.admin.request("/api/exports/partners.csv?q=CSV%20batch%20marker");
-    assert.equal(response.status, 200);
-    const csv = await response.text();
+    const serverPid = process.env.PHASE5A_SERVER_PID;
+    assert.ok(serverPid && /^\d+$/.test(serverPid), "Export measurements require the isolated server PID.");
+    function serverRssBytes() {
+      return Number(execFileSync("ps", ["-o", "rss=", "-p", serverPid!], { encoding: "utf8" }).trim()) * 1024;
+    }
+    const rssBeforeBytes = serverRssBytes();
+    let peakRssBytes = rssBeforeBytes;
+    let samplingError: unknown;
+    const started = performance.now();
+    const sampling = setInterval(() => {
+      try {
+        peakRssBytes = Math.max(peakRssBytes, serverRssBytes());
+      } catch (error) {
+        samplingError = error;
+        clearInterval(sampling);
+      }
+    }, 20);
+    let csv: string;
+    try {
+      const response = await browser.admin.request("/api/exports/partners.csv?q=CSV%20batch%20marker");
+      assert.equal(response.status, 200);
+      csv = await response.text();
+      peakRssBytes = Math.max(peakRssBytes, serverRssBytes());
+    } finally {
+      clearInterval(sampling);
+    }
+    assert.ifError(samplingError);
+    t.diagnostic(JSON.stringify({
+      measurement: "isolated-partner-export", rows: batchSize,
+      responseMs: Math.round(performance.now() - started),
+      csvBytes: Buffer.byteLength(csv), sampledServerPeakRssBytes: peakRssBytes,
+      serverRssBeforeBytes: rssBeforeBytes,
+      samplingIntervalMs: 20,
+    }));
     const rows = csv.trimEnd().split("\r\n");
     assert.equal(rows.length - 1, batchSize, "header excluded, all fixture rows included");
     assert.ok(rows[1].includes("CSV batch marker 0000"));
     assert.ok(rows.at(-1)?.includes("CSV batch marker 1000"));
+  });
+
+  await t.test("isolated partner-search baseline records HTTP latency and representative query plans", async () => {
+    for (const [kind, query] of [
+      ["common", "CSV batch marker"], ["rare", "CSV batch marker 1000"], ["absent", "NoSuchFixturePartner"],
+    ]) {
+      const latencies: number[] = [];
+      for (let attempt = 0; attempt < 11; attempt++) {
+        const started = performance.now();
+        const response = await browser.admin.request(`/api/partners?q=${encodeURIComponent(query)}`);
+        assert.equal(response.status, 200);
+        const result = await response.json();
+        assert.ok(result.items.length <= 20);
+        assert.equal(result.total, kind === "common" ? 1_001 : kind === "rare" ? 1 : 0);
+        if (attempt > 0) latencies.push(performance.now() - started);
+      }
+      const normalized = normalizePartnerSearch(query);
+      const predicates = [
+        Prisma.sql`display_name LIKE ${`%${normalized.query}%`}`,
+        Prisma.sql`code LIKE ${`%${normalized.codeSearch}%`}`,
+        ...(normalized.codeFragment ? [Prisma.sql`code LIKE ${`%${normalized.codeFragment}%`}`] : []),
+        ...(normalized.phoneSearch ? [Prisma.sql`phone LIKE ${`%${normalized.phoneSearch}%`}`] : []),
+        ...(normalized.icoSearch ? [Prisma.sql`ico LIKE ${`%${normalized.icoSearch}%`}`] : []),
+      ];
+      const where = Prisma.sql`company_id = ${company.id} AND (${Prisma.join(predicates, " OR ")})`;
+      type Plan = { type: string; key: string | null; rows: bigint; Extra: string };
+      const plans = await prisma.$queryRaw<Plan[]>`EXPLAIN SELECT id FROM partners WHERE ${where}
+        ORDER BY display_name, id LIMIT 20`;
+      const countPlans = await prisma.$queryRaw<Plan[]>`EXPLAIN SELECT COUNT(*) FROM partners WHERE ${where}`;
+      const summarize = (plan: Plan) => ({
+        accessType: plan.type, index: plan.key, estimatedRows: Number(plan.rows), extra: plan.Extra,
+      });
+      latencies.sort((left, right) => left - right);
+      t.diagnostic(JSON.stringify({
+        measurement: "isolated-partner-search", case: kind, samples: latencies.length,
+        p50Ms: Math.round(latencies[4]), p95Ms: Math.round(latencies[9]),
+        representativeListPlan: plans.map(summarize), representativeCountPlan: countPlans.map(summarize),
+      }));
+    }
   });
 
   await t.test("purchase filters use inclusive Bratislava calendar days and include deleted only on request", async () => {

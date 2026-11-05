@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Lint, typecheck, unit tests, and production build
+    runs-on: ubuntu-latest
+    env:
+      NODE_ENV: production
+      APP_BASE_URL: https://partners.example.invalid
+      DATABASE_URL: mysql://ci:ci@127.0.0.1:3306/ci
+      MIGRATE_DATABASE_URL: mysql://ci:ci@127.0.0.1:3306/ci
+      AUTH_SECRET: ci-only-synthetic-secret-000000000000000000000000000000
+      LOCAL_QUICK_LOGIN_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --include=dev
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test:unit
+      - run: npm run build
+
+  acceptance:
+    name: Isolated standalone API and browser acceptance
+    runs-on: ubuntu-latest
+    needs: quality
+    timeout-minutes: 20
+    env:
+      NODE_ENV: production
+      APP_BASE_URL: https://partners.example.invalid
+      DATABASE_URL: mysql://ci:ci@127.0.0.1:3308/disabled
+      MIGRATE_DATABASE_URL: mysql://ci:ci@127.0.0.1:3308/disabled
+      AUTH_SECRET: ci-only-synthetic-secret-000000000000000000000000000000
+      LOCAL_QUICK_LOGIN_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --include=dev
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - name: Generate ephemeral database credentials
+        shell: bash
+        run: |
+          for name in MARIADB_ROOT_PASSWORD DB_APP_PASSWORD DB_MIGRATE_PASSWORD; do
+            value="$(openssl rand -hex 32)"
+            echo "::add-mask::$value"
+            printf '%s=%s\n' "$name" "$value" >> "$GITHUB_ENV"
+          done
+      - run: docker compose up -d --wait db
+      - run: ACCEPTANCE_PHASE11=1 npm run test:acceptance
+      - name: Stop the disposable CI database
+        if: always()
+        run: docker compose down
+
+  dependency-audit:
+    name: Full and production dependency audits
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --include=dev
+      - name: Run both audits and fail on high or critical findings
+        shell: bash
+        run: |
+          set +e
+          npm audit --audit-level=high
+          full_status=$?
+          npm audit --omit=dev --audit-level=high
+          production_status=$?
+          if [[ "$full_status" -ne 0 || "$production_status" -ne 0 ]]; then
+            exit 1
+          fi

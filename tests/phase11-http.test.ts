@@ -15,7 +15,7 @@ const base = "http://127.0.0.1:3017";
 const origin = "https://partners.example.invalid";
 const cookieName = "__Secure-authjs.session-token";
 type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
-type Access = "tenant-admin" | "tenant-staff" | "superadmin" | "account" | "auth" | "public" | "cron" | "logo" | "privacy";
+type Access = "tenant-admin" | "tenant-staff" | "superadmin" | "account" | "auth" | "public" | "cron" | "health" | "logo" | "privacy";
 type Endpoint = { route: string; method: Method; access: Access; success?: number };
 
 // Each explicit handler export needs a role/guard case, including factory-created handlers.
@@ -36,6 +36,7 @@ const endpoints: Endpoint[] = [
   { route: "/api/company/settings", method: "GET", access: "tenant-admin" },
   { route: "/api/company/settings", method: "PATCH", access: "tenant-admin" },
   { route: "/api/cron/close-monthly-badges", method: "POST", access: "cron" },
+  { route: "/api/health", method: "GET", access: "health" },
   ...["audit-logs", "monthly", "partners", "purchases"].map((kind): Endpoint => ({
     route: `/api/exports/${kind}.csv`, method: "GET", access: "tenant-admin",
   })),
@@ -220,6 +221,19 @@ test("phase 11 complete endpoint role guards and tenant boundaries", async (t) =
       role: "superadmin", passwordHash, mustChangePassword: false,
     } });
     const actors = { anonymous: undefined, seller: first.seller, admin: first.admin, superadmin };
+    await t.test("oversized and malformed JSON writes are rejected without persistent side effects", async () => {
+      const admin = await clientFor(first.admin);
+      const before = await prisma.company.findUniqueOrThrow({ where: { id: first.company.id } });
+      const auditCount = await prisma.auditLog.count({ where: { companyId: first.company.id } });
+      await expectStatus(await admin.request("/api/company/settings", {
+        method: "PATCH", body: JSON.stringify({ value: "x".repeat(1_048_576) }),
+      }), 413, "oversized settings payload", "PAYLOAD_TOO_LARGE");
+      await expectStatus(await admin.request("/api/company/settings", {
+        method: "PATCH", body: "{",
+      }), 400, "malformed settings payload", "INVALID_JSON");
+      assert.deepEqual(await prisma.company.findUniqueOrThrow({ where: { id: first.company.id } }), before);
+      assert.equal(await prisma.auditLog.count({ where: { companyId: first.company.id } }), auditCount);
+    });
     type Actor = keyof typeof actors;
     const tenant = (entry: Endpoint) => entry.access === "tenant-admin" || entry.access === "tenant-staff";
     function pathFor(entry: Endpoint, target = first) {
@@ -309,7 +323,7 @@ test("phase 11 complete endpoint role guards and tenant boundaries", async (t) =
           let status = entry.success ?? 200;
           let code: string | undefined;
           if (entry.access === "cron") { status = 401; code = "UNAUTHENTICATED"; }
-          else if (!["auth", "public"].includes(entry.access)) {
+          else if (!["auth", "public", "health"].includes(entry.access)) {
             if (actor === "anonymous") { status = 401; code = "UNAUTHENTICATED"; }
             else if ((entry.access === "superadmin" && actor !== "superadmin") ||
               (entry.access === "tenant-admin" && actor === "seller") ||

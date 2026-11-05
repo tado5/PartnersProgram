@@ -4,12 +4,14 @@ import { hash } from "@node-rs/argon2";
 import { PrismaClient } from "@prisma/client";
 
 import { localTestUsers } from "../src/lib/local-test-users";
+import { env } from "../src/lib/env";
+import { createDatabaseAdapter } from "../src/server/db-adapter.mjs";
 
 if (process.env.NODE_ENV !== "development") {
   throw new Error("Local test users can only be seeded in development.");
 }
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({ adapter: createDatabaseAdapter(env.DATABASE_URL) });
 const passwordHashOptions = {
   memoryCost: 19_456,
   timeCost: 2,

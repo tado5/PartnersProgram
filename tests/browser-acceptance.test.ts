@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { once } from "node:events";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { request as httpRequest } from "node:http";
+import { createServer } from "node:https";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import { hash } from "@node-rs/argon2";
 import { chromium, type BrowserContext, type Page } from "playwright";
@@ -12,12 +18,60 @@ import { encryptToken } from "../src/server/token-crypto";
 
 const base = "http://127.0.0.1:3017";
 const origin = "https://partners.example.invalid";
+declare global {
+  interface Window {
+    acceptanceMetrics?: { layoutShiftSum: number; largestContentfulPaintMs: number; longTasks: number };
+  }
+}
 if (!process.env.DATABASE_URL?.endsWith("/europodlahy_5a_validation")) {
   throw new Error("Browser acceptance requires the disposable validation database.");
 }
 
 test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }, async (t) => {
-  const browser = await chromium.launch({ channel: "chrome", headless: true });
+  const certificateDirectory = await mkdtemp(join(tmpdir(), "partners-browser-tls-"));
+  t.after(() => rm(certificateDirectory, { recursive: true, force: true }));
+  const keyPath = join(certificateDirectory, "key.pem");
+  const certificatePath = join(certificateDirectory, "certificate.pem");
+  execFileSync("openssl", [
+    "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
+    "-keyout", keyPath, "-out", certificatePath, "-subj", "/CN=partners.example.invalid",
+  ], { stdio: "ignore" });
+  const relay = createServer({
+    key: await readFile(keyPath), cert: await readFile(certificatePath),
+  }, (request, response) => {
+    const upstream = httpRequest(`${base}${request.url}`, {
+      method: request.method,
+      headers: {
+        ...request.headers, host: new URL(origin).host,
+        "x-forwarded-host": new URL(origin).host,
+        "x-forwarded-proto": "https", "x-forwarded-port": "443",
+      },
+    }, (result) => {
+      response.writeHead(result.statusCode ?? 502, result.headers);
+      result.pipe(response);
+    });
+    upstream.on("error", () => {
+      console.error("Isolated browser HTTPS relay could not reach the fixture server.");
+      if (response.headersSent) response.destroy();
+      else response.writeHead(502).end("Fixture server unavailable.");
+    });
+    request.pipe(upstream);
+  });
+  t.after(() => new Promise<void>((resolve, reject) => {
+    relay.closeAllConnections();
+    relay.close((error) => error ? reject(error) : resolve());
+  }));
+  relay.listen(0, "127.0.0.1");
+  await once(relay, "listening");
+  const address = relay.address();
+  assert.ok(address && typeof address !== "string");
+  const browser = await chromium.launch({
+    channel: process.env.CI ? "chromium" : "chrome", headless: true,
+    args: [
+      `--host-resolver-rules=MAP partners.example.invalid 127.0.0.1:${address.port}`,
+      "--no-proxy-server",
+    ],
+  });
   const errors: string[] = [];
   const password = randomBytes(24).toString("base64url");
   const passwordHash = await hash(password, { memoryCost: 19456, timeCost: 2, parallelism: 1 });
@@ -26,21 +80,11 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
 
   async function session(email: string, mobile = false) {
     const context = await browser.newContext({
+      ignoreHTTPSErrors: true,
       viewport: mobile ? { width: 390, height: 844 } : { width: 1366, height: 900 },
       ...(mobile ? { isMobile: true, hasTouch: true, deviceScaleFactor: 3 } : {}),
     });
     contexts.push(context);
-    // Keep the production HTTPS origin/cookies while forwarding only to the local fixture server.
-    await context.route(`${origin}/**`, async (route) => {
-      const url = new URL(route.request().url());
-      const response = await route.fetch({
-        url: `${base}${url.pathname}${url.search}`, maxRedirects: 0,
-        ...(route.request().headers()["next-action"] ? {
-          headers: { ...route.request().headers(), "x-forwarded-host": url.host },
-        } : {}),
-      });
-      await route.fulfill({ response });
-    });
     const page = await context.newPage();
     page.on("pageerror", (error) => errors.push(error.message));
     await page.goto(`${origin}/login`);
@@ -140,6 +184,57 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
       companyId: second.id, userId: secondAdmin.id, action: "partner.update", entityType: "partner",
       entityId: otherPartner.id, partnerId: otherPartner.id, newValues: { displayName: "Browser Beta Secret" },
     } });
+
+    await t.test("production pages expose a bounded desktop and mobile performance baseline", async () => {
+      for (const mobile of [false, true]) {
+        const page = await session(admin.email, mobile);
+        await page.addInitScript(() => {
+          const metrics = { layoutShiftSum: 0, largestContentfulPaintMs: 0, longTasks: 0 };
+          window.acceptanceMetrics = metrics;
+          new PerformanceObserver((list) => {
+            for (const entry of list.getEntries()) {
+              const shift = entry as PerformanceEntry & { hadRecentInput: boolean; value: number };
+              if (!shift.hadRecentInput) metrics.layoutShiftSum += shift.value;
+            }
+          }).observe({ type: "layout-shift", buffered: true });
+          new PerformanceObserver((list) => {
+            for (const entry of list.getEntries()) metrics.largestContentfulPaintMs = entry.startTime;
+          }).observe({ type: "largest-contentful-paint", buffered: true });
+          new PerformanceObserver((list) => {
+            metrics.longTasks += list.getEntries().length;
+          }).observe({ type: "longtask", buffered: true });
+        });
+        for (const path of ["/app", "/app/partneri", "/app/reporty"]) {
+          const response = await page.goto(`${origin}${path}`);
+          assert.equal(response?.status(), 200);
+          await page.waitForLoadState("networkidle");
+          const metrics = await page.evaluate(() => {
+            if (!window.acceptanceMetrics) throw new Error("Browser performance observers were not installed.");
+            const navigation = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming;
+            const resources = performance.getEntriesByType("resource") as PerformanceResourceTiming[];
+            return {
+              ...window.acceptanceMetrics,
+              domContentLoadedMs: navigation.domContentLoadedEventEnd,
+              loadMs: navigation.loadEventEnd,
+              firstContentfulPaintMs: performance.getEntriesByName("first-contentful-paint")[0]?.startTime ?? null,
+              resourceRequests: resources.length,
+              resourceDecodedBytes: resources.reduce((sum, entry) => sum + entry.decodedBodySize, 0),
+            };
+          });
+          assert.ok(metrics.domContentLoadedMs > 0);
+          assert.ok(metrics.resourceRequests > 0);
+          assert.ok(metrics.resourceDecodedBytes > 0);
+          await noOverflow(page);
+          t.diagnostic(JSON.stringify({
+            measurement: "isolated-browser-performance",
+            viewport: mobile ? "390px-touch" : "1366px-desktop",
+            path,
+            ...metrics,
+          }));
+        }
+        await page.context().close();
+      }
+    });
 
     await t.test("mobile validation identifies fields, prevents invalid requests and preserves server details", async () => {
       const page = await session(admin.email, true);
@@ -747,7 +842,11 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
       });
       assert.equal(anonymous.status(), 401);
       const foreignOrigin = await page.request.post(endpoint, {
-        headers: { Origin: "https://foreign.example.invalid" }, data: { token: cardToken, format: "card" },
+        headers: {
+          Origin: "https://foreign.example.invalid",
+          Cookie: (await page.context().cookies(origin)).map(({ name, value }) => `${name}=${value}`).join("; "),
+        },
+        data: { token: cardToken, format: "card" },
       });
       assert.equal(foreignOrigin.status(), 403);
       const post = (target: Page, id: string, token = cardToken, format = "card") =>
@@ -1153,16 +1252,21 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
       });
 
       await t.test("logout and history navigation do not restore an authenticated company page", async () => {
-        const page = await session(admin.email);
-        await page.goto(`${origin}/app/audit`);
-        await page.getByRole("link", { name: /Browser Alpha Partner/ }).first().waitFor();
-        await page.getByRole("button", { name: "Odhlásiť", exact: true }).filter({ visible: true }).click();
-        await page.waitForURL((url) => url.pathname === "/login");
-        await page.goBack();
-        await page.waitForURL((url) => url.pathname === "/login");
-        assert.doesNotMatch(await page.locator("body").innerText(), /Browser Alpha Partner|Browser audit 44/);
-        const response = await page.context().request.get(`${base}/api/audit-logs`);
-        assert.equal(response.status(), 401);
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const page = await session(admin.email);
+          await page.goto(`${origin}/app/audit`);
+          await page.getByRole("link", { name: /Browser Alpha Partner/ }).first().waitFor();
+          await page.getByRole("button", { name: "Odhlásiť", exact: true }).filter({ visible: true }).click();
+          await page.waitForURL((url) => url.pathname === "/login");
+          assert.equal(new URL(page.url()).origin, origin);
+          await page.goBack();
+          await page.waitForURL((url) => url.pathname === "/login");
+          await page.getByLabel("E-mail", { exact: true }).waitFor();
+          assert.doesNotMatch(await page.locator("body").innerText(), /Browser Alpha Partner|Browser audit 44/);
+          const response = await page.context().request.get(`${base}/api/audit-logs`);
+          assert.equal(response.status(), 401);
+          await page.context().close();
+        }
       });
     }
     if (process.env.ACCEPTANCE_PRIVACY === "1") {
