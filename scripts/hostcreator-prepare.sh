@@ -3,7 +3,7 @@ set +x
 set -euo pipefail
 umask 077
 
-for tool in node git unzip tar sha256sum mktemp; do
+for tool in node git tar sha256sum mktemp; do
   if ! command -v "$tool" >/dev/null 2>&1; then
     printf 'Required deployment tool is missing: %s\n' "$tool" >&2
     exit 1
@@ -33,7 +33,7 @@ node -e 'if (process.platform !== "linux" || process.arch !== "x64" || Number(pr
 temporary="$(mktemp -d "$release/.runtime-download.XXXXXX")"
 trap 'rm -f -- "$temporary/artifact.zip" "$temporary/runtime.tar.gz" "$temporary/commit.txt" "$temporary/SHA256SUMS" "$temporary/archive-list.txt"; rmdir -- "$temporary"' EXIT
 node scripts/download-hostcreator-artifact.mjs "$temporary/artifact.zip"
-unzip -q -j "$temporary/artifact.zip" runtime.tar.gz commit.txt SHA256SUMS -d "$temporary"
+node scripts/extract-hostcreator-artifact.mjs "$temporary/artifact.zip" "$temporary"
 if [[ "$(cat "$temporary/commit.txt")" != "$(git rev-parse HEAD)" ]]; then
   printf 'Runtime commit does not match the checked-out release.\n' >&2
   exit 1

@@ -200,6 +200,9 @@ fine-grained GitHub token obmedzený na tento repozitár s oprávnením
 poľa, Gitu ani `.env` aplikácie. Overte, že ho HostCreators bezpečne uchováva
 a maskuje v logoch; obmedzte prístup k administrácii a pravidelne ho rotujte.
 Skript neposiela token na úložisko so signed download URL a nevypisuje ho.
+ZIP obálku artefaktu rozbaľuje priamo Node.js; hosting nepotrebuje `unzip`
+ani inštaláciu npm balíčkov. Akceptuje iba tri očakávané súbory, overuje
+ZIP CRC a následne SHA-256 runtime archívu. Limit ZIP je 256 MiB.
 
 Skript čaká najviac 25 minút na úspešné dokončenie **celého push CI na `main`**
 pre presný commit klonovaný hostingom, teda aj acceptance a audit jobov.

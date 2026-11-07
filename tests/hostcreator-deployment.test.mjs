@@ -94,6 +94,40 @@ test("standalone preparation supports a clean checkout without optional public a
   }
 });
 
+test("Node ZIP extraction accepts stored and compressed files and rejects corruption and extra entries", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "partners-zip-test-"));
+  const extractor = new URL("../scripts/extract-hostcreator-artifact.mjs", import.meta.url).pathname;
+  try {
+    const source = join(directory, "source");
+    await mkdir(source);
+    for (const name of ["runtime.tar.gz", "commit.txt", "SHA256SUMS"]) {
+      await writeFile(join(source, name), `${name}\n`.repeat(name === "runtime.tar.gz" ? 100 : 1));
+    }
+    for (const compression of ["0", "9"]) {
+      const archive = join(directory, `archive-${compression}.zip`);
+      const output = join(directory, `output-${compression}`);
+      await mkdir(output);
+      execFileSync("zip", ["-q", `-${compression}`, archive, "runtime.tar.gz", "commit.txt", "SHA256SUMS"], { cwd: source });
+      execFileSync(process.execPath, [extractor, archive, output]);
+      assert.deepEqual(await readFile(join(output, "runtime.tar.gz")), await readFile(join(source, "runtime.tar.gz")));
+    }
+    const broken = await readFile(join(directory, "archive-0.zip"));
+    const payload = 30 + broken.readUInt16LE(26) + broken.readUInt16LE(28);
+    broken[payload] ^= 1;
+    const archive = join(directory, "broken.zip");
+    await writeFile(archive, broken);
+    const output = join(directory, "rejected");
+    await mkdir(output);
+    assert.throws(() => execFileSync(process.execPath, [extractor, archive, output], { stdio: "pipe" }), /checksum mismatch/);
+    await writeFile(join(source, "unexpected.txt"), "unexpected");
+    const extra = join(directory, "extra.zip");
+    execFileSync("zip", ["-q", extra, "runtime.tar.gz", "commit.txt", "SHA256SUMS", "unexpected.txt"], { cwd: source });
+    assert.throws(() => execFileSync(process.execPath, [extractor, extra, output], { stdio: "pipe" }), /exactly three/);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("Bash prepares a verified runtime without modifying the active release", async () => {
   const directory = await mkdtemp(join(tmpdir(), "partners-prepare-test-"));
   const release = join(directory, "sub/partners/release_20261107080507");
@@ -112,7 +146,14 @@ test("Bash prepares a verified runtime without modifying the active release", as
     await writeFile(join(shared, ".env"), "SYNTHETIC_ENV=test-only\n");
     await writeFile(join(runtime, "server.js"), "// Synthetic runtime fixture\n");
     // Stand in for the Linux preflight and network download; extraction uses real tools.
-    await writeFile(join(bin, "node"), '#!/bin/bash\nif [[ "$1" == "-e" ]]; then exit 0; fi\ncp "$HOSTCREATOR_TEST_ZIP" "$2"\n', { mode: 0o700 });
+    await writeFile(join(bin, "node"), `#!/bin/bash
+if [[ "$1" == "-e" ]]; then exit 0; fi
+if [[ "$1" == "scripts/download-hostcreator-artifact.mjs" ]]; then
+  cp "$HOSTCREATOR_TEST_ZIP" "$2"
+else
+  exec "$HOSTCREATOR_TEST_NODE" "$HOSTCREATOR_TEST_EXTRACTOR" "$2" "$3"
+fi
+`, { mode: 0o700 });
     await writeFile(join(bin, "sha256sum"), `#!${process.execPath}
 const fs = require("node:fs");
 const crypto = require("node:crypto");
@@ -130,6 +171,8 @@ if (expected !== actual) process.exit(1);
       ...process.env,
       PATH: `${bin}:${process.env.PATH}`,
       HOSTCREATOR_TEST_ZIP: zip,
+      HOSTCREATOR_TEST_NODE: process.execPath,
+      HOSTCREATOR_TEST_EXTRACTOR: new URL("../scripts/extract-hostcreator-artifact.mjs", import.meta.url).pathname,
       GIT_DIR: execFileSync("git", ["rev-parse", "--absolute-git-dir"], { encoding: "utf8" }).trim(),
     };
     execFileSync("bash", [script.pathname], { cwd: release, env });
