@@ -160,7 +160,10 @@ Pri buildovaní s `NODE_ENV=production` nastavte `APP_BASE_URL` na HTTPS doménu
 `Dockerfile` (multi-stage): `deps` → `builder` → `runner` (`node:24-bookworm-slim`, non-root, OpenSSL pre Prisma, `TZ=UTC`, iba standalone výstup, `public` a `.next/static`). Build-time DB URL-y sú syntetické a slúžia len konfigurácii Prisma; build nespúšťa migrácie ani sa nepripája na DB. `AUTH_SECRET` použitý pri build-e je neplatný placeholder a runtime ho vždy vyžaduje z produkčného prostredia.
 
 CI používa `npm ci --include=dev` aj pri `NODE_ENV=production`, aby nechýbal
-Prisma CLI, TypeScript, ESLint a testovacie nástroje. Audit gate odmieta
+Prisma CLI, TypeScript, ESLint a testovacie nástroje.
+Pred typecheckom a unit testami CI explicitne generuje Prisma klienta cez
+`npm run db:generate`; čistý runner nemá klienta z predchádzajúceho buildu.
+Audit gate odmieta
 HIGH/CRITICAL nálezy; aktuálny production-only audit má 0 nálezov, celý strom
 obsahuje 16 MODERATE záznamov vo vývojovom lint nástroji (`minimatch`).
 Nie je to dôkaz nulového rizika ani súhlas s neoverenými override/downgrade.
