@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { test } from "node:test";
 import { hash } from "@node-rs/argon2";
-import { encode } from "@auth/core/jwt";
+import { decode, encode } from "@auth/core/jwt";
 import type { Company, User } from "@prisma/client";
 import type { AuthContext, CompanyContext } from "../src/server/auth/session";
 import { prisma } from "../src/server/db";
@@ -37,15 +37,20 @@ class Browser {
     }
     return response;
   }
-  async login(email: string, credentialPassword = password) {
+  async login(email: string, credentialPassword = password, rememberLogin = false) {
     const csrf = await (await this.request("/api/auth/csrf")).json();
     await this.request("/api/auth/callback/credentials", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded", "X-Auth-Return-Redirect": "1" },
-      body: new URLSearchParams({ csrfToken: csrf.csrfToken, email, password: credentialPassword, callbackUrl: `${base}/app` }),
+      body: new URLSearchParams({ csrfToken: csrf.csrfToken, email, password: credentialPassword, rememberLogin: String(rememberLogin), callbackUrl: `${base}/app` }),
     });
-    const session = await (await this.request("/api/auth/session")).json();
+    const response = await this.request("/api/auth/session");
+    const session = await response.json();
     assert.equal(session.user?.isSessionValid, true, `Login failed for test account ${email}`);
+    assert.equal(session.user.rememberLogin, rememberLogin);
+    for (const cookie of response.headers.getSetCookie().filter(value => value.startsWith("__Secure-authjs.session-token"))) {
+      assert.equal(/;\s*(?:Expires|Max-Age)=/i.test(cookie), rememberLogin);
+    }
     return session;
   }
 }
@@ -422,6 +427,50 @@ test("phase 5A database and HTTP isolation", async (t) => {
         secret: process.env.AUTH_SECRET!, salt: cookie,
       }));
       assert.equal((await validSeller.request("/api/partners")).status, 200);
+      for (const [userId, role, companyId, passwordChangedAt] of [
+        ["1", "admin", "1", 0],
+        ["2", "seller", "1", 0],
+        [saUser.id.toString(), "superadmin", null, saUser.passwordChangedAt?.getTime() ?? 0],
+      ] as const) {
+        for (const days of [6, 8]) {
+          const browser = new Browser();
+          browser.cookies.set(cookie, await encode({
+            token: { ...valid, userId, role, companyId, passwordChangedAt,
+              rememberLogin: true, loginAt: now - days * 86400000, lastActivityAt: now - days * 86400000 },
+            secret: process.env.AUTH_SECRET!, salt: cookie,
+          }));
+          const response = await browser.request("/api/auth/session");
+          const session = await response.json();
+          assert.equal(session.user?.isSessionValid === true, days === 6, `${role}: fixed seven-day remembered limit`);
+          if (days === 6) {
+            assert.equal(session.user.rememberLogin, true);
+            const renewed = await decode({ token: browser.cookies.get(cookie), secret: process.env.AUTH_SECRET!, salt: cookie });
+            assert.ok(renewed?.exp);
+            assert.ok(Math.abs(renewed.exp * 1000 - (now + 86400000)) < 5000,
+              "Refresh must not extend the remembered session past its original seven-day deadline");
+          }
+        }
+      }
+      const remembered = new Browser();
+      const session = await remembered.login("legacy.admin@example.test", password, true);
+      assert.equal(session.user.rememberLogin, true);
+      const token = await decode({ token: remembered.cookies.get(cookie), secret: process.env.AUTH_SECRET!, salt: cookie });
+      assert.ok(token?.exp && token.loginAt);
+      assert.ok(Math.abs(token.exp * 1000 - token.loginAt - 7 * 86400000) < 2000);
+      await prisma.user.update({ where: { id: BigInt(1) }, data: { isActive: false } });
+      try {
+        assert.equal((await remembered.request("/api/partners")).status, 401, "Deactivation revokes remembered sessions");
+      } finally {
+        await prisma.user.update({ where: { id: BigInt(1) }, data: { isActive: true } });
+      }
+      await remembered.login("legacy.admin@example.test", password, true);
+      const csrf = await (await remembered.request("/api/auth/csrf")).json();
+      await remembered.request("/api/auth/signout", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ csrfToken: csrf.csrfToken, callbackUrl: `${base}/login` }),
+      });
+      assert.equal((await remembered.request("/api/partners")).status, 401, "Signout removes remembered login");
     });
 
     await t.test("company admin creates only its own seller; resets revoke old sessions", async () => {
@@ -434,10 +483,10 @@ test("phase 5A database and HTTP isolation", async (t) => {
       assert.equal(createdUser.companyId, second.id);
       assert.equal(createdUser.mustChangePassword, true);
       const browser = new Browser();
-      await browser.login(createdUser.email);
+      await browser.login(createdUser.email, password, true);
       assert.equal((await browser.request("/api/partners")).status, 403);
       await prisma.user.update({ where: { id: sellerId }, data: { mustChangePassword: false } });
-      await browser.login(createdUser.email);
+      await browser.login(createdUser.email, password, true);
       assert.equal((await browser.request("/api/partners")).status, 200);
       const reset = await secondBrowser.request(`/api/users/${sellerId}/reset-password`,
         json("POST", { temporaryPassword: password }));

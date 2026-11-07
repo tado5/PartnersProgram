@@ -19,6 +19,7 @@ export function LoginForm({
   async function submitCredentials(credentials: {
     email?: FormDataEntryValue | null;
     password?: FormDataEntryValue | null;
+    rememberLogin?: boolean;
     testRole?: "superadmin" | "admin" | "seller";
   }) {
     setError("");
@@ -54,6 +55,7 @@ export function LoginForm({
     await submitCredentials({
       email: formData.get("email"),
       password: formData.get("password"),
+      rememberLogin: formData.get("rememberLogin") === "on",
     });
   }
 
@@ -88,6 +90,15 @@ export function LoginForm({
             type="password"
           />
         </label>
+        <div>
+          <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm text-white/80">
+            <input type="checkbox" name="rememberLogin" className="size-4 accent-primary" />
+            Zapamätať si prihlásenie
+          </label>
+          <p className="text-xs leading-5 text-white/60">
+            Na 7 dní na tomto zariadení. Nezapínajte na spoločnom alebo verejnom zariadení.
+          </p>
+        </div>
         {error ? (
           <p aria-live="polite" className="text-sm text-red-700">
             {error}

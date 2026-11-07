@@ -6,6 +6,7 @@ import {
   ScanLine,
 } from "lucide-react";
 import Link from "next/link";
+import { PwaInstall } from "@/components/pwa-install";
 
 const features = [
   {
@@ -131,6 +132,7 @@ export default function Home() {
           ))}
         </ol>
         <footer className="mt-9 flex flex-wrap items-center justify-between gap-3 border-t border-white/12 pt-5 text-sm">
+          <PwaInstall />
           <p className="text-white/60">Správa partnerov a vernostných bodov pre viacero firiem.</p>
           <div className="flex flex-wrap items-center gap-5">
             <Link href="/gdpr" className="text-white/70 underline decoration-white/30 underline-offset-4 transition hover:text-white">

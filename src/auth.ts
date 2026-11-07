@@ -1,6 +1,7 @@
 import { verify, hash } from "@node-rs/argon2";
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
+import { encode } from "next-auth/jwt";
 import { z } from "zod";
 
 import { env } from "@/lib/env";
@@ -9,6 +10,7 @@ import { record } from "@/server/audit";
 import { prisma } from "@/server/db";
 import { allowLoginAttempt, getClientIp } from "@/server/auth/rate-limit";
 import type { UserRole } from "@prisma/client";
+import { rememberedSessionSeconds, sessionLimits } from "@/server/auth/session-policy";
 
 const passwordHashOptions = {
   memoryCost: 19_456,
@@ -19,6 +21,7 @@ const passwordHashOptions = {
 const credentialsSchema = z.object({
   email: z.email().transform((email) => email.trim().toLowerCase()),
   password: z.string().min(1).max(128),
+  rememberLogin: z.preprocess(value => value === true || value === "true", z.boolean()),
 });
 
 const maxFailedAttempts = 5;
@@ -52,7 +55,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
   session: {
     strategy: "jwt",
-    maxAge: env.SESSION_SELLER_MAX_HOURS * 60 * 60,
+    maxAge: Math.max(rememberedSessionSeconds, env.SESSION_SELLER_MAX_HOURS * 3600, env.SESSION_ADMIN_MAX_HOURS * 3600),
+  },
+  jwt: {
+    async encode(parameters) {
+      const token = parameters.token;
+      const role = isUserRole(token?.role) ? token.role : "seller";
+      const maximumMs = sessionLimits(role, token?.rememberLogin === true).maximumMs;
+      const loginAt = numberClaim(token?.loginAt) ?? Date.now();
+      return encode({ ...parameters, maxAge: Math.max(0, Math.ceil((loginAt + maximumMs - Date.now()) / 1000)) });
+    },
   },
   pages: {
     signIn: "/login",
@@ -62,6 +74,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       credentials: {
         email: { label: "E-mail", type: "email" },
         password: { label: "Heslo", type: "password" },
+        rememberLogin: { label: "Zapamätať si prihlásenie", type: "checkbox" },
         testRole: { label: "Lokálna testovacia rola", type: "text" },
       },
       async authorize(credentials, request) {
@@ -227,6 +240,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           companyId: user.companyId?.toString() ?? null,
           mustChangePassword: user.mustChangePassword,
           passwordChangedAt: user.passwordChangedAt?.getTime() ?? 0,
+          rememberLogin: parsed.data.rememberLogin,
         };
       },
     }),
@@ -244,6 +258,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.loginAt = now;
         token.lastActivityAt = now;
         token.isSessionValid = true;
+        token.rememberLogin = user.rememberLogin === true;
         return token;
       }
 
@@ -279,21 +294,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         },
       });
       const now = Date.now();
+      const limits = sessionLimits(roleClaim, token.rememberLogin === true);
       const isValid =
         Boolean(databaseUser?.isActive) &&
         databaseUser?.role === roleClaim &&
         (databaseUser?.companyId?.toString() ?? null) === token.companyId &&
         (databaseUser?.passwordChangedAt?.getTime() ?? 0) === passwordChangedAt &&
-        now - loginAt <=
-          (roleClaim !== "seller"
-            ? env.SESSION_ADMIN_MAX_HOURS
-            : env.SESSION_SELLER_MAX_HOURS) *
-            3_600_000 &&
-        now - lastActivityAt <=
-          (roleClaim !== "seller"
-            ? env.SESSION_ADMIN_IDLE_MINUTES
-            : env.SESSION_SELLER_IDLE_MINUTES) *
-            60_000;
+        now - loginAt <= limits.maximumMs &&
+        now - lastActivityAt <= limits.idleMs;
 
       if (!isValid) {
         return { ...token, isSessionValid: false };
@@ -320,6 +328,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.loginAt = 0;
         session.user.lastActivityAt = 0;
         session.user.isSessionValid = false;
+        session.user.rememberLogin = false;
         return session;
       }
 
@@ -332,6 +341,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       session.user.loginAt = numberClaim(token.loginAt) ?? 0;
       session.user.lastActivityAt = numberClaim(token.lastActivityAt) ?? 0;
       session.user.isSessionValid = token.isSessionValid === true;
+      session.user.rememberLogin = token.rememberLogin === true;
       return session;
     },
   },

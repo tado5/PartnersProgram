@@ -174,6 +174,25 @@ Presné výsledky a otvorené podmienky sú v
 
 ## 8a. HostCreators: hotový balík z GitHub Actions
 
+### Online PWA
+
+Úvodná aj prihlasovacia stránka ponúkajú inštaláciu pre Android a návod pre iOS.
+Android využije dostupný inštalačný prompt, inak zobrazí postup pre Chrome.
+Na iOS používateľ v Safari zvolí Zdieľať → Pridať na plochu.
+Manifest má rozsah `/`, štart `/login` a samostatné okno. HTTPS je potrebné.
+Service worker `/sw.js` neukladá stránky, API ani používateľské dáta do Cache
+Storage; pri zlyhaní sieťovej navigácie zobrazí iba všeobecnú offline správu.
+Existujúce HTTP 401/403/500 odpovede nemení. API požiadavky neobsluhuje.
+PNG ikony sú v `public/pwa` a musia zostať súčasťou standalone balíka.
+
+Prihlásenie vo webe aj PWA ponúka nezaškrtnutú voľbu „Zapamätať si prihlásenie“.
+Po zapnutí platí relácia najviac 7 dní od prihlásenia aj po zatvorení aplikácie;
+obnovovanie JWT tento termín nepredlžuje. Bez zapnutia zostávajú pôvodné
+limity neaktivity a maximálnej dĺžky podľa roly. Heslo sa neukladá do
+localStorage ani service workera; relácia používa zabezpečenú HttpOnly cookie.
+Odhlásenie odstráni reláciu na danom zariadení, zmena hesla a deaktivácia účtu
+ju zneplatnia pri ďalšej požiadavke. Na spoločných zariadeniach voľbu nepoužívajte.
+
 Táto alternatíva nepotrebuje Docker ani build na hostingu. Iba push do `main` vytvorí
 artefakt `hostcreator-standalone-<commit>` s `runtime.tar.gz`, `commit.txt`,
 `SHA256SUMS` a `source-manifest.json`. Obsahuje standalone runtime vrátane statických súborov

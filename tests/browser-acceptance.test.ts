@@ -81,6 +81,7 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
     args: [
       `--host-resolver-rules=MAP partners.example.invalid 127.0.0.1:${address.port}`,
       "--no-proxy-server",
+      "--ignore-certificate-errors",
     ],
   });
   const errors: string[] = [];
@@ -195,6 +196,86 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
       companyId: second.id, userId: secondAdmin.id, action: "partner.update", entityType: "partner",
       entityId: otherPartner.id, partnerId: otherPartner.id, newValues: { displayName: "Browser Beta Secret" },
     } });
+
+    await t.test("online PWA exposes mobile installation, manifest, icons and uncached worker", async () => {
+      const context = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 390, height: 844 } });
+      contexts.push(context);
+      const page = await context.newPage();
+      for (const path of ["/", "/login"]) {
+        await page.goto(`${origin}${path}`);
+        await page.getByRole("button", { name: "Nainštalovať pre iOS", exact: true }).click();
+        await page.getByRole("status").filter({ hasText: "Pridať na plochu" }).waitFor();
+        await page.getByRole("button", { name: "Nainštalovať pre Android", exact: true }).click();
+        await page.getByRole("status").filter({ hasText: "Chrome" }).waitFor();
+        await page.evaluate(() => {
+          const event = new Event("beforeinstallprompt", { cancelable: true });
+          Object.defineProperties(event, {
+            prompt: { value: Promise.resolve.bind(Promise) },
+            userChoice: { value: Promise.resolve({ outcome: "accepted" }) },
+          });
+          window.dispatchEvent(event);
+        });
+        await page.getByRole("button", { name: "Nainštalovať pre Android", exact: true }).click();
+        await page.getByRole("status").filter({ hasText: "Inštalácia bola potvrdená" }).waitFor();
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+      }
+      const manifestResponse = await context.request.get(`${base}/manifest.webmanifest`);
+      assert.equal(manifestResponse.status(), 200);
+      const manifest = await manifestResponse.json();
+      assert.equal(manifest.display, "standalone");
+      assert.equal(manifest.start_url, "/login");
+      assert.equal(manifest.scope, "/");
+      for (const icon of manifest.icons) {
+        const response = await context.request.get(`${base}${icon.src}`);
+        assert.equal(response.status(), 200);
+        const metadata = await sharp(await response.body()).metadata();
+        assert.equal(`${metadata.width}x${metadata.height}`, icon.sizes);
+      }
+      const worker = await context.request.get(`${base}/sw.js`);
+      assert.equal(worker.status(), 200);
+      assert.match(worker.headers()["cache-control"], /no-store/);
+      assert.match(worker.headers()["content-type"], /javascript/);
+      await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller));
+      assert.deepEqual(await page.evaluate(() => caches.keys()), []);
+      await context.setOffline(true);
+      await page.goto(`${origin}/app`);
+      await page.getByRole("heading", { name: "Nie ste pripojení na internet" }).waitFor();
+      await context.setOffline(false);
+      await page.goto(`${origin}/login`);
+      await page.getByRole("button", { name: "Nainštalovať pre Android", exact: true }).waitFor();
+      await page.evaluate(() => window.dispatchEvent(new Event("appinstalled")));
+      await page.getByRole("status").filter({ hasText: "PartnersProgram je otvorený ako aplikácia" }).waitFor();
+      assert.equal(await page.getByRole("button", { name: "Nainštalovať pre Android", exact: true }).count(), 0);
+    });
+
+    await t.test("remembered login is opt-in and survives reopening the browser or PWA", async () => {
+      const context = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 390, height: 844 } });
+      contexts.push(context);
+      const page = await context.newPage();
+      await page.goto(`${origin}/login`);
+      const remember = page.getByRole("checkbox", { name: "Zapamätať si prihlásenie", exact: true });
+      assert.equal(await remember.isChecked(), false);
+      await remember.check();
+      await page.getByLabel("E-mail", { exact: true }).fill(admin.email);
+      await page.getByLabel("Heslo", { exact: true }).fill(password);
+      await page.getByRole("button", { name: "Prihlásiť sa", exact: true }).click();
+      await page.waitForURL(`${origin}/app`);
+      const state = await context.storageState();
+      const cookie = state.cookies.find(item => item.name === "__Secure-authjs.session-token" || item.name === "__Secure-authjs.session-token.0");
+      assert.ok(cookie && cookie.expires > Date.now() / 1000 + 6 * 86400,
+        JSON.stringify(state.cookies.map(item => ({ name: item.name, expires: item.expires }))));
+      assert.equal(cookie.httpOnly, true);
+      assert.equal(cookie.secure, true);
+      await context.close();
+      const reopened = await browser.newContext({ ignoreHTTPSErrors: true, storageState: state });
+      contexts.push(reopened);
+      const reopenedPage = await reopened.newPage();
+      await reopenedPage.goto(`${origin}/app`);
+      assert.equal(new URL(reopenedPage.url()).pathname, "/app");
+      const session = await reopenedPage.evaluate(async () => (await fetch("/api/auth/session")).json());
+      assert.equal(session.user.rememberLogin, true);
+      assert.equal(session.user.isSessionValid, true);
+    });
 
     await t.test("role manuals cover all chapters and enforce access on desktop and mobile", async () => {
       const anonymous = await browser.newContext({ ignoreHTTPSErrors: true });

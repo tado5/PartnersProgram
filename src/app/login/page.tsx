@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import Link from "next/link";
 
 import { LoginForm } from "@/components/auth/login-form";
+import { PwaInstall } from "@/components/pwa-install";
 import { env } from "@/lib/env";
 
 type LoginPageProps = {
@@ -139,6 +140,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
       </div>
 
       <footer className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-3 border-t border-white/12 py-5 text-xs text-white/55">
+        <PwaInstall />
         <span>PartnersProgram · Partnerský program</span>
         <Link href="/gdpr" className="inline-flex items-center gap-1 underline decoration-white/30 underline-offset-4 hover:text-white">
           Ochrana osobných údajov <ArrowUpRight aria-hidden="true" className="size-3.5" />
