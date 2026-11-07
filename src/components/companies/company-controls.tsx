@@ -2,6 +2,7 @@
 
 import { useState, type SubmitEvent } from "react";
 import { ValidatedForm } from "@/components/validated-form";
+import { ActionLabel } from "@/components/action-label";
 import { formatApiError } from "@/lib/validation-errors";
 
 const inputClass = "mt-2 block w-full rounded-md border border-stone-300 px-3 py-2";
@@ -77,9 +78,11 @@ export function CompanyForm({ company }: {
 export function CompanyControls({ companyId, isActive }: { companyId: string; isActive: boolean }) {
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
-  const [pending, setPending] = useState(false);
+  const [currentAction, setCurrentAction] = useState<"select" | "activate" | "deactivate" | null>(null);
+  const pending = currentAction !== null;
   async function perform(action: "select" | "activate" | "deactivate") {
-    setPending(true);
+    if (pending) return;
+    setCurrentAction(action);
     setError("");
     try {
       const response = await fetch(
@@ -90,6 +93,7 @@ export function CompanyControls({ companyId, isActive }: { companyId: string; is
       const body = await response.json();
       if (!response.ok) {
         setError(formatApiError(body.error, "Operácia zlyhala."));
+        setCurrentAction(null);
         return;
       }
       if (action === "select") {
@@ -97,28 +101,29 @@ export function CompanyControls({ companyId, isActive }: { companyId: string; is
         try { localStorage.setItem("company-context-change", crypto.randomUUID()); } catch {}
         window.location.replace("/app");
       } else window.location.reload();
+      return;
     } catch {
       setError("Požiadavku sa nepodarilo dokončiť.");
-    } finally {
-      setPending(false);
     }
+    setCurrentAction(null);
   }
   function submitDeactivation(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     void perform("deactivate");
   }
   return <div className="my-6 space-y-4">
-    <button className={buttonClass} type="button" disabled={pending} onClick={() => void perform("select")}>
-      {pending ? "Otváram program firmy…" : "Otvoriť program firmy"}
+    <button aria-busy={currentAction === "select"} className={buttonClass} type="button" disabled={pending} onClick={() => void perform("select")}>
+      <ActionLabel busy={currentAction === "select"} pending="Otváram program firmy…">Otvoriť program firmy</ActionLabel>
     </button>
     <div className="flex flex-wrap gap-3">
       {isActive ? <ValidatedForm className="flex flex-wrap gap-3" onSubmit={submitDeactivation}>
         <input className="rounded-md border px-3 py-2" name="reason" aria-label="Dôvod deaktivácie"
           placeholder="Povinný dôvod deaktivácie" maxLength={255} required
           value={reason} onChange={(event) => { setError(""); setReason(event.target.value); }} />
-        <button className="rounded-md border px-4 py-2 text-sm" type="submit" disabled={pending}>Deaktivovať firmu</button>
-      </ValidatedForm> : <button className="rounded-md border px-4 py-2 text-sm" type="button" disabled={pending}
-        onClick={() => void perform("activate")}>Aktivovať firmu</button>}
+        <button aria-busy={currentAction === "deactivate"} className="rounded-md border px-4 py-2 text-sm" type="submit" disabled={pending}>
+          <ActionLabel busy={currentAction === "deactivate"} pending="Deaktivujem firmu…">Deaktivovať firmu</ActionLabel></button>
+      </ValidatedForm> : <button aria-busy={currentAction === "activate"} className="rounded-md border px-4 py-2 text-sm" type="button" disabled={pending}
+        onClick={() => void perform("activate")}><ActionLabel busy={currentAction === "activate"} pending="Aktivujem firmu…">Aktivovať firmu</ActionLabel></button>}
     </div>
     {error ? <p role="alert" className="text-sm text-red-700">{error}</p> : null}
   </div>;
@@ -126,15 +131,20 @@ export function CompanyControls({ companyId, isActive }: { companyId: string; is
 
 export function ClearCompanyContext() {
   const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
   async function clear() {
+    if (pending) return;
+    setPending(true);
+    setError("");
     try {
       const response = await fetch("/api/superadmin/company-context", { method: "DELETE" });
-      if (!response.ok) { setError("Kontext sa nepodarilo ukončiť."); return; }
+      if (!response.ok) { setError("Kontext sa nepodarilo ukončiť."); setPending(false); return; }
       try { localStorage.setItem("company-context-change", crypto.randomUUID()); } catch {}
       window.location.reload();
-    } catch { setError("Požiadavku sa nepodarilo dokončiť."); }
+    } catch { setError("Požiadavku sa nepodarilo dokončiť."); setPending(false); }
   }
 
-  return <><button className="text-sm underline" type="button" onClick={() => void clear()}>Ukončiť firemný kontext</button>
+  return <><button aria-busy={pending} disabled={pending} className="text-sm underline disabled:opacity-50" type="button" onClick={() => void clear()}>
+    <ActionLabel busy={pending} pending="Ukončujem firemný kontext…">Ukončiť firemný kontext</ActionLabel></button>
     {error ? <p role="alert">{error}</p> : null}</>;
 }

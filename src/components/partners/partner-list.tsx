@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useState } from "react";
 import { useCompanyApi } from "@/components/company-context";
+import { ActionLabel } from "@/components/action-label";
 import { PartnerTypeBadge } from "@/components/partners/partner-type-badge";
 import { CsvExportForm } from "@/components/exports/csv-export-form";
 import { ValidatedForm } from "@/components/validated-form";
@@ -54,32 +55,38 @@ export function PartnerList({
 
   const load = useCallback(
     async (nextPage = 1) => {
+      if (pending) return;
       setPending(true);
       setError("");
-      const params = new URLSearchParams({ page: String(nextPage), active });
-      if (role === "admin") params.set("privacy", privacy);
-      if (query.trim()) params.set("q", query.trim());
-      if (type) params.set("type", type);
-      const response = await companyFetch(`/api/partners?${params}`, { cache: "no-store" });
-      if (!response.ok) {
-        const body = (await response.json()) as ApiError;
-        setError(formatApiError(body.error, "Zoznam partnerov sa nepodarilo načítať."));
-      } else {
-        const body = (await response.json()) as {
-          items: PartnerItem[];
-          page: number;
-          total: number;
-        };
-        setResults({
-          source: initialItems,
-          items: body.items,
-          page: body.page,
-          total: body.total,
-        });
+      try {
+        const params = new URLSearchParams({ page: String(nextPage), active });
+        if (role === "admin") params.set("privacy", privacy);
+        if (query.trim()) params.set("q", query.trim());
+        if (type) params.set("type", type);
+        const response = await companyFetch(`/api/partners?${params}`, { cache: "no-store" });
+        if (!response.ok) {
+          const body = (await response.json()) as ApiError;
+          setError(formatApiError(body.error, "Zoznam partnerov sa nepodarilo načítať."));
+        } else {
+          const body = (await response.json()) as {
+            items: PartnerItem[];
+            page: number;
+            total: number;
+          };
+          setResults({
+            source: initialItems,
+            items: body.items,
+            page: body.page,
+            total: body.total,
+          });
+        }
+      } catch {
+        setError("Zoznam partnerov sa nepodarilo načítať. Skontrolujte pripojenie.");
+      } finally {
+        setPending(false);
       }
-      setPending(false);
     },
-    [active, initialItems, query, type, companyFetch, privacy, role],
+    [active, initialItems, query, type, companyFetch, privacy, role, pending],
   );
 
   function submitSearch(event: React.FormEvent<HTMLFormElement>) {
@@ -112,6 +119,7 @@ export function PartnerList({
       </div>
 
       <ValidatedForm
+        aria-busy={pending}
         className="glass-surface mb-5 grid gap-3 rounded-xl p-4 sm:grid-cols-2 xl:grid-cols-[minmax(10rem,1fr)_auto_auto_auto_auto]"
         onSubmit={submitSearch}
       >
@@ -168,6 +176,7 @@ export function PartnerList({
       {error ? (
         <p aria-live="polite" className="mb-4 text-sm text-red-700">{error}</p>
       ) : null}
+      {pending ? <p className="mb-4 text-sm text-stone-600"><ActionLabel busy pending="Načítavam partnerov…">{null}</ActionLabel></p> : null}
       <section aria-busy={pending} className="data-surface overflow-hidden rounded-xl">
         {items.length ? (
           <div className="divide-y divide-stone-200">

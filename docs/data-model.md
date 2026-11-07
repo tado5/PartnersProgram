@@ -104,7 +104,7 @@ Vedome sa **neevidujú**: adresa, DIČ/IČ DPH, dátum narodenia, bankové údaj
 - Varovania o duplicitnom telefóne/IČO hľadajú iba v danej firme. Tá istá osoba môže mať samostatné partnerstvá v rôznych firmách bez spoločných bodov a histórie.
 
 ## 3. `partner_tokens`
-**Účel:** tokeny pre QR kódy a NFC karty. **Partner môže mať viac aktívnych tokenov.**
+**Účel:** nezávislé QR a NFC odkazy na tú istú trvalú identitu partnera a jeho históriu. **Najviac jeden aktívny token každého typu pre `(company_id, partner_id)`**; QR a NFC môžu existovať súčasne a deaktivujú sa nezávisle. Náhrada nevytvára nového partnera.
 
 | Stĺpec | Typ | Poznámka |
 |---|---|---|
@@ -112,10 +112,12 @@ Vedome sa **neevidujú**: adresa, DIČ/IČ DPH, dátum narodenia, bankové údaj
 | company_id | FK → companies NOT NULL | musí sa zhodovať s firmou partnera |
 | partner_id | FK → partners NOT NULL | |
 | type | ENUM('qr','nfc') NOT NULL | na aký nosič je token určený |
-| token_hash | CHAR(64) NOT NULL | SHA-256 hex; **plný token sa neukladá** |
+| token_hash | CHAR(64) NOT NULL | SHA-256 hex na overenie a vyhľadanie |
+| token_encrypted | VARCHAR(255) NULL | AES-256-GCM obálka nového náhodného tokenu; `NULL` pre staré hash-only tokeny, nikdy plaintext |
 | token_hint | CHAR(6) NOT NULL | prvých 6 znakov, na rozlíšenie kariet v UI |
 | label | VARCHAR(80) NULL | napr. „NFC karta č. 0153“ |
 | is_active | TINYINT(1) NOT NULL DEFAULT 1 | |
+| active_type | ENUM('qr','nfc') NULL | insert/update triggre odvodia `type` pre aktívny token, inak `NULL`; klient túto hodnotu neurčuje |
 | created_by_user_id | FK → users NULL | |
 | created_at | DATETIME(3) NOT NULL | |
 | deactivated_at | DATETIME(3) NULL | |
@@ -123,8 +125,16 @@ Vedome sa **neevidujú**: adresa, DIČ/IČ DPH, dátum narodenia, bankové údaj
 | deactivation_reason | VARCHAR(255) NULL | |
 | last_used_at | DATETIME(3) NULL | |
 
-- **Indexy:** globálne `UNIQUE(token_hash)`, `INDEX(company_id, partner_id, is_active)`.
-- **Obmedzenia:** počet aktívnych tokenov nie je obmedzený; deaktivácia je **nevratná**; token je platný iba ak token, partner aj prevádzkujúca firma sú aktívni.
+- **Indexy:** globálne `UNIQUE(token_hash)`, `INDEX(company_id, partner_id, is_active)`, `UNIQUE(company_id, partner_id, active_type)`. Nullable `active_type` umožňuje zachovať ľubovoľný počet neaktívnych historických tokenov.
+- **Obmedzenia:** deaktivácia je **nevratná**; token je platný iba ak token, partner aj prevádzkujúca firma sú aktívni. DB triggre vynucujú odvodený `active_type` pri INSERT aj UPDATE, unikátny index bráni druhému aktívnemu tokenu rovnakého typu aj pri súbehu.
+- **Životný cyklus:** vydanie/náhrada používa transakčný zámok firmy. Nevybraný aktívny token rovnakého typu = `ACTIVE_TOKEN_EXISTS`, neaktuálny výber = `TOKEN_SELECTION_CHANGED`. Náhrada vyžaduje výslovný výber a dôvod; atomicky deaktivuje starý token a vloží čerstvý náhodný token pre rovnakého partnera. Nákupy, ich tokenové väzby, body, audit a ostatná história sa nemenia.
+- **Opätovné otvorenie:** nový token sa okrem hashu ukladá šifrovane so samostatným stabilným `TOKEN_ENCRYPTION_KEY` (64 hex znakov). AES-256-GCM associated data obsahujú `companyId`, `partnerId`, `type`, `tokenHash`. Zoznam vracia iba metadáta; oprávnené otvorenie dešifruje hodnotu bez nového vydania. Starý hash nemožno rekonštruovať (`TOKEN_NOT_RECOVERABLE`); nepodporuje sa import ani obnova starej hodnoty, iba výslovná náhrada.
+
+### Migrácia `20261020090000_reopenable_partner_tokens`
+- Pridáva nullable `token_encrypted` a nullable enum `active_type`, insert/update triggre a unikátny index `(company_id, partner_id, active_type)`.
+- Súčasné existujúce tokeny sú podľa zadania **testovacie**. Pri duplicitných aktívnych tokenoch rovnakého typu migrácia ponechá najnovší podľa `created_at`, pri zhode podľa `id`, ostatné deaktivuje s pevným migračným dôvodom. Žiadne tokeny sa fyzicky nemažú a nákupy sa nemenia.
+- **Túto migráciu nemožno bez zmeny použiť na reálne predexistujúce produkčné dáta:** vyžadovali by zámerný výber zachovaného tokenu namiesto automatického výberu najnovšieho. Pred nasadením overiť charakter údajov, zálohu a migračný postup.
+- Staré hash-only riadky nedostanú vymyslenú šifrovanú hodnotu. Zachovaný aktívny token naďalej funguje pre držiteľa pôvodnej URL, ale nemožno ho znovu otvoriť v administrácii; UI vysvetlí výslovnú náhradu.
 
 ## 4. `purchases`
 **Účel:** nákupy priradené k partnerovi.

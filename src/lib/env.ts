@@ -13,6 +13,10 @@ const envSchema = z
     SHADOW_DATABASE_URL: mysqlUrl.optional(),
     TEST_DATABASE_URL: mysqlUrl.optional(),
     AUTH_SECRET: z.string().min(32).optional(),
+    TOKEN_ENCRYPTION_KEY: z.preprocess(
+      (value) => value === "" ? undefined : value,
+      z.string().regex(/^[a-fA-F0-9]{64}$/).optional(),
+    ),
     AUTH_URL: z.url().optional(),
     AUTH_TRUST_HOST: z.stringbool().default(false),
     LOCAL_QUICK_LOGIN_ENABLED: z

@@ -3,6 +3,7 @@
 import { useId, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useCompanyApi } from "@/components/company-context";
+import { ActionLabel } from "@/components/action-label";
 import { ValidatedForm } from "@/components/validated-form";
 import { formatApiError } from "@/lib/validation-errors";
 import { PrivacyReceiptFields, privacyPayload } from "./privacy-receipt-fields";
@@ -32,6 +33,7 @@ export function PartnerPrivacy({ partnerId, companySlug, receipts, notices, read
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (busy) return;
     const form = event.currentTarget;
     const payload = privacyPayload(new FormData(form), noticeId);
     if (!payload) { setError("Vyplňte platný dátum a čas poskytnutia oznámenia."); return; }
@@ -82,7 +84,7 @@ export function PartnerPrivacy({ partnerId, companySlug, receipts, notices, read
         </button>
       </div> : null}
       <div id={formId} hidden={receipts.length > 0 && !addingReceipt}>
-        {receipts.length === 0 || addingReceipt ? <ValidatedForm onSubmit={(event) => void submit(event)} className="mt-5 max-w-xl space-y-3">
+        {receipts.length === 0 || addingReceipt ? <ValidatedForm aria-busy={busy} onSubmit={(event) => void submit(event)} className="mt-5 max-w-xl space-y-3">
           <fieldset disabled={busy} className="min-w-0 space-y-3">
             <label className="block text-sm font-medium">Verzia poskytnutého oznámenia
               <select name="noticeId" required value={noticeId} onChange={(event) => setNoticeId(event.target.value)}
@@ -92,8 +94,8 @@ export function PartnerPrivacy({ partnerId, companySlug, receipts, notices, read
             </label>
             <PrivacyReceiptFields key={noticeId} version={notice.version}
               noticeUrl={`/ochrana-udajov/${companySlug}?version=${notice.version}`} correction={receipts.length > 0} />
-            <button className="rounded-md bg-stone-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
-              Zaznamenať poskytnutie
+            <button aria-busy={busy} className="rounded-md bg-stone-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+              <ActionLabel busy={busy} pending="Zaznamenávam poskytnutie…">Zaznamenať poskytnutie</ActionLabel>
             </button>
           </fieldset>
         </ValidatedForm> : null}

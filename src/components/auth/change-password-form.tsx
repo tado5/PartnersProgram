@@ -3,6 +3,7 @@
 import { signOut } from "next-auth/react";
 import { useState, type FormEvent } from "react";
 import { ValidatedForm } from "@/components/validated-form";
+import { ActionLabel } from "@/components/action-label";
 import { formatApiError } from "@/lib/validation-errors";
 
 export function ChangePasswordForm() {
@@ -11,29 +12,35 @@ export function ChangePasswordForm() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isSubmitting) return;
     setError("");
     setIsSubmitting(true);
 
     const formData = new FormData(event.currentTarget);
-    const response = await fetch("/api/me/password", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        currentPassword: formData.get("currentPassword"),
-        newPassword: formData.get("newPassword"),
-      }),
-    });
+    try {
+      const response = await fetch("/api/me/password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          currentPassword: formData.get("currentPassword"),
+          newPassword: formData.get("newPassword"),
+        }),
+      });
 
-    if (!response.ok) {
-      const result = (await response.json()) as {
-        error?: { message?: string };
-      };
-      setError(formatApiError(result.error, "Heslo sa nepodarilo zmeniť."));
+      if (!response.ok) {
+        const result = (await response.json()) as {
+          error?: { message?: string };
+        };
+        setError(formatApiError(result.error, "Heslo sa nepodarilo zmeniť."));
+        setIsSubmitting(false);
+        return;
+      }
+
+      await signOut({ redirectTo: "/login?passwordChanged=1" });
+    } catch {
+      setError("Požiadavku sa nepodarilo dokončiť. Skontrolujte pripojenie.");
       setIsSubmitting(false);
-      return;
     }
-
-    await signOut({ redirectTo: "/login?passwordChanged=1" });
   }
 
   return (
@@ -72,7 +79,7 @@ export function ChangePasswordForm() {
         disabled={isSubmitting}
         type="submit"
       >
-        Zmeniť heslo
+        <ActionLabel busy={isSubmitting} pending="Mením heslo…">Zmeniť heslo</ActionLabel>
       </button>
     </ValidatedForm>
   );

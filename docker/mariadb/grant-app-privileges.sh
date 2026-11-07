@@ -2,7 +2,11 @@
 
 set -e
 
-root_password="${MARIADB_ROOT_PASSWORD:?MARIADB_ROOT_PASSWORD is required}"
+if [ -n "${DB_ROOT_PASSWORD_FILE:-}" ]; then
+  root_password="$(cat "$DB_ROOT_PASSWORD_FILE")"
+else
+  root_password="${MARIADB_ROOT_PASSWORD:?MARIADB_ROOT_PASSWORD is required}"
+fi
 
 MYSQL_PWD="${root_password}" mariadb -uroot <<'SQL'
 GRANT SELECT, INSERT, UPDATE ON europodlahy.companies TO 'europodlahy_app'@'%';

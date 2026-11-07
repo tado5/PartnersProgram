@@ -82,7 +82,7 @@ PartnersProgram/
 |---|---|---|---|
 | M1 | Autentifikácia | login, session, roly, správa používateľov, ochrana proti hádaniu hesla | Admin, Predavač |
 | M2 | Partneri | vytvorenie, úprava, deaktivácia, vyhľadávanie | Admin (Predavač iba vyhľadáva) |
-| M3 | Tokeny QR/NFC | generovanie, odtlačok, deaktivácia, QR obrázok, URL pre NFC | Admin |
+| M3 | Tokeny QR/NFC | generovanie, hash + šifrovaná obálka, oprávnené opätovné otvorenie, výslovná náhrada, nezávislá deaktivácia, QR a obojstranná karta, URL pre NFC | Admin, SA vo vybranej firme |
 | M4 | Nákupy | sken, zápis, body, úprava a soft delete s dôvodom | Predavač, Admin |
 | M5 | Verejná karta | prezeranie bodov, obratu a histórie | Partner |
 | M6 | Reporty a dashboardy | dashboard podľa roly, mesačný prehľad, detail partnera, história | Admin, Predavač (vlastný dnešný prehľad) |
@@ -92,10 +92,19 @@ PartnersProgram/
 Závislosti: M1 → M2 → M3 → M4 → M5; M4 → M6 → M8; M7 využívajú moduly M1 – M4 a M8.
 
 ## 7. Kľúčové toky
-**Identifikácia partnera:** URL `{APP_BASE_URL}/k/{token}` je rovnaká v QR aj na NFC karte.
+**Identifikácia partnera:** nezávislé QR a NFC URL majú spoločný tvar `{APP_BASE_URL}/k/{token}` a vedú na údaje a históriu **toho istého partnera**.
 - Partner naskenuje kód svojím telefónom → otvorí sa verejná karta, ktorú si môže iba prezerať.
 - Predavač naskenuje kód **v prihlásenej aplikácii** → aplikácia z URL vyberie token → `POST /api/scan/resolve` → otvorí sa formulár nákupu.
 - Zápis vždy vyžaduje session admina/predavača danej firmy alebo superadmina s výslovne vybranou firmou. Samotný token na zápis nikdy nestačí.
+
+**Životný cyklus tokenu (schválený kontrakt):**
+- Jedna trvalá partnerská identita/história; najviac jeden aktívny QR a jeden NFC na `(companyId, partnerId)`, nezávislá deaktivácia. Náhrada vytvorí čerstvý náhodný token, nie nového partnera a nie novú históriu.
+- Vydanie/náhrada sa serializuje transakčným zámkom firmy; existujúci aktívny token rovnakého typu musí byť výslovne vybraný na deaktiváciu s dôvodom. Nevybraný token = `ACTIVE_TOKEN_EXISTS`, neaktuálny výber = `TOKEN_SELECTION_CHANGED`. Deaktivácia a vydanie sú atomické. DB limit navyše chráni `UNIQUE(company_id, partner_id, active_type)`; insert/update triggre odvodia `active_type = type` iba pre aktívne tokeny.
+- Náhodná hodnota sa ukladá ako SHA-256 hash aj AES-256-GCM obálka; associated data sú `companyId`, `partnerId`, `type`, `tokenHash`. Samostatný stabilný `TOKEN_ENCRYPTION_KEY` má 64 hex znakov, je oddelený od `AUTH_SECRET` aj DB a zálohuje sa zvlášť.
+- Zoznam obsahuje iba metadáta. Same-origin `POST /api/tokens/{tokenId}/open` pre A alebo SA s explicitnou firmou vráti `{ token, value, url, qrSvg, qrPng }`, `no-store`, audit `token.open` iba typ/hint. Vyžaduje aktívnu firmu/partnera/token; cudzie/neaktívne objekty = neutrálna 404. Chýbajúci kľúč = `503 TOKEN_KEY_MISSING`, nesprávny kľúč/poškodená obálka = bezpečná 500. Hodnota, ciphertext ani URL nepatria do auditu.
+- Starý hash-only token nemožno rekonštruovať (`409 TOKEN_NOT_RECOVERABLE`); UI vysvetlí výslovnú náhradu, import/obnova hodnoty sa nepodporuje. Migračné pravidlá pre existujúce testovacie duplicity a zákaz automatického výberu na reálnych produkčných dátach sú v [data-model](data-model.md#3-partner_tokens).
+- Opätovne otvorené detaily poskytujú QR PNG/SVG, prednú/zadnú stranu karty SVG/PDF, systémové zdieľanie pri podpore, kopírovanie odkazu a verejnú kartu. Náhľad a PDF používajú spoločný SVG zdroj. `POST /api/partners/{id}/card` s `{ token, format: 'card'|'a4' }` nevydáva token; má `no-store` a audit `export.partner_card`. Obe strany sú 85,60 × 53,98 mm alebo uprostred A4 s orezovými značkami, 600 dpi RGB bez spadávky/CMYK.
+- NFC detaily vysvetľujú fyzický zápis NDEF URI URL na NTAG213/215 kompatibilným zapisovačom; aplikácia čip automaticky nezapíše, uzamknutie až po overení. Každý bearer odkaz sprístupňuje verejnú históriu nákupov komukoľvek s odkazom, nie oprávnenie zapisovať.
 
 **Zápis nákupu:** formulár → `POST /api/purchases` → service overí aktívnu firmu a partnera v nej, vypočíta `FLOOR(suma)` a uloží nákup aj audit v jednej transakcii.
 

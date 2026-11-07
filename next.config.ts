@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   /* config options here */
+  output: "standalone",
   cacheComponents: true,
   partialPrefetching: true,
   // Keep the dev badge away from the sidebar footer (logout button).
@@ -12,6 +13,10 @@ const nextConfig: NextConfig = {
     "/api/reports/pdf": [
       "./node_modules/dejavu-fonts-ttf/ttf/DejaVuSans.ttf",
       "./node_modules/dejavu-fonts-ttf/ttf/DejaVuSans-Bold.ttf",
+      "./node_modules/dejavu-fonts-ttf/LICENSE",
+    ],
+    "/api/partners/*/card": [
+      "./node_modules/dejavu-fonts-ttf/ttf/DejaVuSans.ttf",
       "./node_modules/dejavu-fonts-ttf/LICENSE",
     ],
   },

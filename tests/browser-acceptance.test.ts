@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { once } from "node:events";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { request as httpRequest } from "node:http";
+import { createServer } from "node:https";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import { hash } from "@node-rs/argon2";
 import { chromium, type BrowserContext, type Page } from "playwright";
@@ -8,15 +14,65 @@ import sharp from "sharp";
 
 import { prisma } from "../src/server/db";
 import { companyCookieName } from "../src/server/auth/company-cookie";
+import { encryptToken } from "../src/server/token-crypto";
+import { getManualArticles } from "../src/lib/manual";
 
 const base = "http://127.0.0.1:3017";
 const origin = "https://partners.example.invalid";
+declare global {
+  interface Window {
+    acceptanceMetrics?: { layoutShiftSum: number; largestContentfulPaintMs: number; longTasks: number };
+  }
+}
 if (!process.env.DATABASE_URL?.endsWith("/europodlahy_5a_validation")) {
   throw new Error("Browser acceptance requires the disposable validation database.");
 }
 
 test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }, async (t) => {
-  const browser = await chromium.launch({ channel: "chrome", headless: true });
+  const certificateDirectory = await mkdtemp(join(tmpdir(), "partners-browser-tls-"));
+  t.after(() => rm(certificateDirectory, { recursive: true, force: true }));
+  const keyPath = join(certificateDirectory, "key.pem");
+  const certificatePath = join(certificateDirectory, "certificate.pem");
+  execFileSync("openssl", [
+    "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
+    "-keyout", keyPath, "-out", certificatePath, "-subj", "/CN=partners.example.invalid",
+  ], { stdio: "ignore" });
+  const relay = createServer({
+    key: await readFile(keyPath), cert: await readFile(certificatePath),
+  }, (request, response) => {
+    const upstream = httpRequest(`${base}${request.url}`, {
+      method: request.method,
+      headers: {
+        ...request.headers, host: new URL(origin).host,
+        "x-forwarded-host": new URL(origin).host,
+        "x-forwarded-proto": "https", "x-forwarded-port": "443",
+      },
+    }, (result) => {
+      response.writeHead(result.statusCode ?? 502, result.headers);
+      result.pipe(response);
+    });
+    upstream.on("error", () => {
+      console.error("Isolated browser HTTPS relay could not reach the fixture server.");
+      if (response.headersSent) response.destroy();
+      else response.writeHead(502).end("Fixture server unavailable.");
+    });
+    request.pipe(upstream);
+  });
+  t.after(() => new Promise<void>((resolve, reject) => {
+    relay.closeAllConnections();
+    relay.close((error) => error ? reject(error) : resolve());
+  }));
+  relay.listen(0, "127.0.0.1");
+  await once(relay, "listening");
+  const address = relay.address();
+  assert.ok(address && typeof address !== "string");
+  const browser = await chromium.launch({
+    channel: process.env.CI ? "chromium" : "chrome", headless: true,
+    args: [
+      `--host-resolver-rules=MAP partners.example.invalid 127.0.0.1:${address.port}`,
+      "--no-proxy-server",
+    ],
+  });
   const errors: string[] = [];
   const password = randomBytes(24).toString("base64url");
   const passwordHash = await hash(password, { memoryCost: 19456, timeCost: 2, parallelism: 1 });
@@ -25,21 +81,11 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
 
   async function session(email: string, mobile = false) {
     const context = await browser.newContext({
+      ignoreHTTPSErrors: true,
       viewport: mobile ? { width: 390, height: 844 } : { width: 1366, height: 900 },
       ...(mobile ? { isMobile: true, hasTouch: true, deviceScaleFactor: 3 } : {}),
     });
     contexts.push(context);
-    // Keep the production HTTPS origin/cookies while forwarding only to the local fixture server.
-    await context.route(`${origin}/**`, async (route) => {
-      const url = new URL(route.request().url());
-      const response = await route.fetch({
-        url: `${base}${url.pathname}${url.search}`, maxRedirects: 0,
-        ...(route.request().headers()["next-action"] ? {
-          headers: { ...route.request().headers(), "x-forwarded-host": url.host },
-        } : {}),
-      });
-      await route.fulfill({ response });
-    });
     const page = await context.newPage();
     page.on("pageerror", (error) => errors.push(error.message));
     await page.goto(`${origin}/login`);
@@ -118,10 +164,14 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
       amount: "24.60", netAmount: "20.00", vatRatePercent: "23.00",
       points: 20, partnerPresent: true, source: "manual", purchasedAt: new Date("2026-10-14T10:00:00Z"),
     } });
-    const cardToken = randomBytes(32).toString("base64url");
+    let cardToken = randomBytes(32).toString("base64url");
     await prisma.partnerToken.create({ data: {
       companyId: company.id, partnerId: partner.id, type: "qr",
       tokenHash: createHash("sha256").update(cardToken).digest("hex"),
+      tokenEncrypted: encryptToken(cardToken, {
+        companyId: company.id, partnerId: partner.id, type: "qr",
+        tokenHash: createHash("sha256").update(cardToken).digest("hex"),
+      }, process.env.TOKEN_ENCRYPTION_KEY),
       tokenHint: cardToken.slice(0, 6), createdByUserId: admin.id,
     } });
     await prisma.auditLog.createMany({ data: Array.from({ length: 45 }, (_, index) => ({
@@ -135,6 +185,115 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
       companyId: second.id, userId: secondAdmin.id, action: "partner.update", entityType: "partner",
       entityId: otherPartner.id, partnerId: otherPartner.id, newValues: { displayName: "Browser Beta Secret" },
     } });
+
+    await t.test("role manuals cover all chapters and enforce access on desktop and mobile", async () => {
+      const anonymous = await browser.newContext({ ignoreHTTPSErrors: true });
+      contexts.push(anonymous);
+      const response = await anonymous.request.get(`${base}/app/manual`, { maxRedirects: 0 });
+      assert.equal(response.status(), 307);
+      assert.equal(new URL(response.headers().location).pathname, "/login");
+      for (const [email, role] of [
+        [admin.email, "admin"], [seller.email, "seller"], [superadmin.email, "superadmin"],
+      ] as const) {
+        const page = await session(email, role === "seller");
+        const root = role === "superadmin" ? "/superadmin/manual" : "/app/manual";
+        const selectionBefore = (await page.context().cookies()).find((cookie) => cookie.name === companyCookieName)?.value;
+        if (role === "seller") {
+          await page.getByRole("button", { name: "Otvoriť menu", exact: true }).click();
+        }
+        const menu = page.getByRole("navigation", { name: "Hlavné menu" }).filter({ visible: true });
+        await menu.locator("summary").filter({ hasText: "Manuál" }).click();
+        await menu.getByRole("link", { name: "Všetky kapitoly", exact: true }).click();
+        await page.waitForURL(`${origin}${root}`);
+        const chapters = page.getByRole("navigation", { name: "Kapitoly manuálu" });
+        assert.equal(await chapters.getByRole("link").count(), getManualArticles(role).length);
+        assert.equal(await chapters.getByRole("link", { name: /Firmy a prvý administrátor/ }).count(), role === "superadmin" ? 1 : 0);
+        if (role === "seller") {
+          assert.equal(await chapters.getByRole("link", { name: /Prvé nastavenie firmy|Exporty CSV/ }).count(), 0);
+        }
+        for (const article of getManualArticles(role)) {
+          const loaded = await page.goto(`${origin}${root}/${article.slug}`);
+          assert.equal(loaded?.status(), 200, `${role}: ${article.slug}`);
+          await page.getByRole("heading", { name: article.title, exact: true, level: 1 }).waitFor();
+          await page.getByRole("navigation", { name: "Navigácia manuálu" }).waitFor();
+          await noOverflow(page);
+          if (role === "superadmin") {
+            assert.equal(await page.locator('main a[href^="/app/"]').count(), 0);
+          }
+        }
+        for (const path of role === "seller"
+          ? ["/app/manual/nastavenie-firmy", "/app/manual/exporty", "/app/manual/firmy"]
+          : [`${root}/neexistuje`, `${root}/zaciname/dalsia`]) {
+          const denied = await page.goto(`${origin}${path}`);
+          // Next may already have streamed HTTP 200 before the server-side notFound.
+          assert.ok([200, 404].includes(denied!.status()), path);
+          await page.getByRole("heading", { name: "Návod nie je dostupný", level: 1 }).waitFor();
+          assert.equal(await page.locator('meta[name="robots"][content*="noindex"]').count(), 1);
+          assert.equal(await page.getByRole("navigation", { name: "Navigácia manuálu" }).count(), 0);
+          assert.equal(await page.getByRole("link", { name: "Otvoriť nastavenia", exact: true }).count(), 0);
+        }
+        if (role !== "superadmin") {
+          await page.goto(`${origin}/superadmin/manual`);
+          await page.waitForURL(`${origin}/app`);
+        } else {
+          const selectionAfter = (await page.context().cookies()).find((cookie) => cookie.name === companyCookieName)?.value;
+          assert.equal(selectionBefore, undefined);
+          assert.equal(selectionAfter, selectionBefore, "Reading the global manual must not select a company.");
+        }
+        await page.context().close();
+      }
+    });
+
+    await t.test("production pages expose a bounded desktop and mobile performance baseline", async () => {
+      for (const mobile of [false, true]) {
+        const page = await session(admin.email, mobile);
+        await page.addInitScript(() => {
+          const metrics = { layoutShiftSum: 0, largestContentfulPaintMs: 0, longTasks: 0 };
+          window.acceptanceMetrics = metrics;
+          new PerformanceObserver((list) => {
+            for (const entry of list.getEntries()) {
+              const shift = entry as PerformanceEntry & { hadRecentInput: boolean; value: number };
+              if (!shift.hadRecentInput) metrics.layoutShiftSum += shift.value;
+            }
+          }).observe({ type: "layout-shift", buffered: true });
+          new PerformanceObserver((list) => {
+            for (const entry of list.getEntries()) metrics.largestContentfulPaintMs = entry.startTime;
+          }).observe({ type: "largest-contentful-paint", buffered: true });
+          new PerformanceObserver((list) => {
+            metrics.longTasks += list.getEntries().length;
+          }).observe({ type: "longtask", buffered: true });
+        });
+        for (const path of ["/app", "/app/partneri", "/app/reporty"]) {
+          const response = await page.goto(`${origin}${path}`);
+          assert.equal(response?.status(), 200);
+          await page.waitForLoadState("networkidle");
+          const metrics = await page.evaluate(() => {
+            if (!window.acceptanceMetrics) throw new Error("Browser performance observers were not installed.");
+            const navigation = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming;
+            const resources = performance.getEntriesByType("resource") as PerformanceResourceTiming[];
+            return {
+              ...window.acceptanceMetrics,
+              domContentLoadedMs: navigation.domContentLoadedEventEnd,
+              loadMs: navigation.loadEventEnd,
+              firstContentfulPaintMs: performance.getEntriesByName("first-contentful-paint")[0]?.startTime ?? null,
+              resourceRequests: resources.length,
+              resourceDecodedBytes: resources.reduce((sum, entry) => sum + entry.decodedBodySize, 0),
+            };
+          });
+          assert.ok(metrics.domContentLoadedMs > 0);
+          assert.ok(metrics.resourceRequests > 0);
+          assert.ok(metrics.resourceDecodedBytes > 0);
+          await noOverflow(page);
+          t.diagnostic(JSON.stringify({
+            measurement: "isolated-browser-performance",
+            viewport: mobile ? "390px-touch" : "1366px-desktop",
+            path,
+            ...metrics,
+          }));
+        }
+        await page.context().close();
+      }
+    });
 
     await t.test("mobile validation identifies fields, prevents invalid requests and preserves server details", async () => {
       const page = await session(admin.email, true);
@@ -267,6 +426,120 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
       await noOverflow(page);
     });
 
+    await t.test("delayed actions expose progress and recover from network failures without duplicate submissions", async () => {
+      const page = await session(admin.email, true);
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      async function delayedFailure(pattern: string, action: () => Promise<unknown>, text: string, button = true) {
+        let release!: () => void;
+        const gate = new Promise<void>((resolve) => { release = resolve; });
+        let markSeen!: () => void;
+        const seen = new Promise<void>((resolve) => { markSeen = resolve; });
+        let count = 0;
+        await page.route(pattern, async (route) => {
+          count++;
+          markSeen();
+          await gate;
+          await route.abort("failed");
+        });
+        try {
+          await action();
+          await seen;
+          const status = page.getByRole("status").filter({ hasText: text });
+          await status.first().waitFor();
+          assert.equal(await status.first().locator("svg").evaluate((element) => getComputedStyle(element).animationName), "none");
+          if (button) {
+            const busyButton = page.getByRole("button", { name: text, exact: true });
+            assert.equal(await busyButton.isDisabled(), true);
+            assert.equal(await busyButton.getAttribute("aria-busy"), "true");
+          }
+          assert.equal(count, 1);
+        } finally { release(); }
+        await page.getByRole("status").filter({ hasText: text }).first().waitFor({ state: "hidden" });
+        await page.getByText(/Skontrolujte pripojenie/).first().waitFor();
+        await page.unroute(pattern);
+      }
+
+      await page.goto(`${origin}/app/users`);
+      const create = page.locator("form").filter({ has: page.locator('input[name="name"]') });
+      await create.locator('input[name="name"]').fill("Pending User");
+      await create.locator('input[name="email"]').fill("pending@example.test");
+      await create.locator('input[name="temporaryPassword"]').fill("pending-password-123");
+      await delayedFailure("**/api/users", () => create.getByRole("button", { name: "Vytvoriť účet" }).click(), "Vytváram účet…");
+      assert.equal(await create.getByRole("button", { name: "Vytvoriť účet" }).isEnabled(), true);
+      const row = page.getByRole("article").filter({ has: page.getByRole("heading", { name: seller.name, exact: true }) });
+      await row.getByLabel(`Nové dočasné heslo: ${seller.name}`).fill("pending-password-123");
+      await delayedFailure(`**/api/users/${seller.id}/reset-password`, () => row.getByRole("button", { name: "Resetovať heslo" }).click(), "Resetujem heslo…");
+      await delayedFailure(`**/api/users/${seller.id}`, () => row.getByLabel(`Rola: ${seller.name}`).selectOption("admin"), "Mením rolu…", false);
+      await delayedFailure(`**/api/users/${seller.id}`, () => row.getByRole("button", { name: "Deaktivovať", exact: true }).click(), "Deaktivujem…");
+      assert.equal(await row.getByLabel(`Rola: ${seller.name}`).isEnabled(), true);
+
+      await page.goto(`${origin}/app/partneri`);
+      await delayedFailure("**/api/partners?*", () => page.getByRole("button", { name: "Hľadať", exact: true }).click(), "Načítavam partnerov…", false);
+      await page.getByRole("heading", { name: partner.displayName, exact: true }).waitFor();
+
+      await page.goto(`${origin}/app/partneri/${partner.id}`);
+      await page.getByLabel("Dôvod deaktivácie *", { exact: true }).fill("Pending request");
+      await delayedFailure(`**/api/partners/${partner.id}/deactivate`, () => page.getByRole("button", { name: "Deaktivovať partnera" }).click(), "Deaktivujem partnera…");
+      assert.equal(await page.getByRole("button", { name: "Deaktivovať partnera" }).isEnabled(), true);
+
+      await delayedFailure("**/api/tokens/*/open", () => page.getByRole("button", { name: "Otvoriť kartu", exact: true }).click(), "Načítavam QR náhľad…");
+      const dialog = page.getByRole("dialog");
+      assert.equal(await dialog.getByRole("button", { name: "Zavrieť", exact: true }).isEnabled(), true);
+      await delayedFailure("**/api/tokens/*/open", () => dialog.getByRole("button", { name: "Načítať QR náhľad" }).click(), "Načítavam QR náhľad…");
+      await dialog.getByRole("button", { name: "Hotovo a zavrieť" }).click();
+
+      await page.goto(`${origin}/app/nastavenia`);
+      await delayedFailure("**/api/company/privacy", () => page.getByRole("button", { name: "Uložiť návrh", exact: true }).click(), "Ukladám návrh…");
+      await page.goto(`${origin}/change-password`);
+      await page.getByLabel("Súčasné heslo", { exact: true }).fill(password);
+      await page.getByLabel("Nové heslo (minimálne 10 znakov)", { exact: true }).fill("pending-password-123");
+      await delayedFailure("**/api/me/password", () => page.getByRole("button", { name: "Zmeniť heslo", exact: true }).click(), "Mením heslo…");
+
+      await page.addInitScript(`{
+        Object.defineProperty(navigator.mediaDevices, "getUserMedia", { configurable: true, value: () =>
+          new Promise((_, reject) => {
+            window.addEventListener("test-camera-denied", () => reject(new DOMException("Denied", "NotAllowedError")), { once: true });
+          }),
+        });
+        Object.defineProperty(window, "NDEFReader", { configurable: true, value: class extends EventTarget {
+          scan({ signal }) {
+            window.addEventListener("test-nfc-read", () => {
+              if (signal.aborted) return;
+              const bytes = new TextEncoder().encode(${JSON.stringify(cardToken)});
+              this.dispatchEvent(Object.assign(new Event("reading"), {
+                message: { records: [{ recordType: "url", data: new DataView(bytes.buffer) }] },
+              }));
+            });
+            return new Promise((resolve) => {
+              window.addEventListener("test-nfc-ready", () => resolve(), { once: true });
+            });
+          }
+        } });
+      }`);
+      await page.goto(`${origin}/app/sken`);
+      await page.getByRole("button", { name: "Zapnúť kameru", exact: true }).click();
+      const startingCamera = page.getByRole("button", { name: "Spúšťam kameru…", exact: true });
+      assert.equal(await startingCamera.isDisabled(), true);
+      assert.equal(await startingCamera.getAttribute("aria-busy"), "true");
+      await page.evaluate(() => window.dispatchEvent(new Event("test-camera-denied")));
+      await page.getByText("Kameru sa nepodarilo spustiť.", { exact: false }).waitFor();
+      assert.equal(await page.getByRole("button", { name: "Zapnúť kameru", exact: true }).isEnabled(), true);
+      await page.getByRole("button", { name: "Načítať NFC", exact: true }).click();
+      const startingNfc = page.getByRole("button", { name: "Spúšťam NFC…", exact: true });
+      assert.equal(await startingNfc.isDisabled(), true);
+      assert.equal(await startingNfc.getAttribute("aria-busy"), "true");
+      await page.evaluate(() => window.dispatchEvent(new Event("test-nfc-ready")));
+      await page.getByRole("button", { name: "Čakám na NFC kartu…" }).waitFor();
+      await delayedFailure("**/api/scan/resolve", async () => {
+        await page.evaluate(() => {
+          window.dispatchEvent(new Event("test-nfc-read"));
+          window.dispatchEvent(new Event("test-nfc-read"));
+        });
+      }, "Overujem kartu partnera…", false);
+      assert.equal(await page.getByRole("button", { name: "Načítať NFC", exact: true }).isEnabled(), true);
+      await page.context().close();
+    });
+
     await t.test("data panels have subtle glass while existing glass surfaces remain unchanged", async () => {
       const page = await session(admin.email);
       await page.goto(`${origin}/app/users`);
@@ -366,15 +639,93 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
       await page.evaluate(() => document.getElementById("hover-regression-probe")?.remove());
     });
 
+    await t.test("one partner card creates QR only and supports NFC-only use after QR revocation", async () => {
+      const sample = await prisma.partner.create({ data: {
+        companyId: company.id, code: "EP-CRD23", type: "installer",
+        displayName: "Unified card sample", createdByUserId: admin.id,
+      } });
+      const page = await session(admin.email, true);
+      await page.goto(`${origin}/app/partneri/${sample.id}`);
+      await page.getByRole("button", { name: "Vytvoriť kartu", exact: true }).click();
+      const creation = page.getByRole("dialog", { name: "Vytvoriť kartu", exact: true });
+      await creation.getByRole("button", { name: "Vytvoriť", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Partnerská karta", exact: true });
+      await dialog.waitFor();
+      assert.equal(await dialog.locator("figure").count(), 2);
+      const tokens = await prisma.partnerToken.findMany({ where: { partnerId: sample.id, isActive: true } });
+      assert.deepEqual(tokens.map((token) => token.type), ["qr"]);
+      await dialog.getByText("Použiť aj ako NFC kartu", { exact: true }).click();
+      await dialog.getByRole("button", { name: "Aktivovať NFC", exact: true }).click();
+      await page.getByRole("dialog", { name: "Vytvoriť NFC prístup", exact: true })
+        .getByRole("button", { name: "Vytvoriť", exact: true }).click();
+      await dialog.waitFor();
+      await dialog.getByText("Správa prístupov", { exact: true }).click();
+      const qr = dialog.getByRole("article", { name: "QR prístup", exact: true });
+      await qr.getByText("Deaktivovať QR", { exact: true }).click();
+      await qr.getByLabel("Dôvod deaktivácie QR", { exact: true }).fill("Test samostatného NFC");
+      await qr.getByRole("button", { name: "Potvrdiť deaktiváciu QR", exact: true }).click();
+      await dialog.getByRole("button", { name: "Vytvoriť QR prístup", exact: true }).first().waitFor();
+      assert.equal(await dialog.locator("figure").count(), 0);
+      assert.equal(await dialog.getByRole("button", { name: "PDF karty · 85,60 × 53,98 mm", exact: true }).count(), 0);
+      await page.keyboard.press("Escape");
+      await page.reload();
+      await page.getByRole("button", { name: "Otvoriť kartu", exact: true }).click();
+      await dialog.getByText("Použiť aj ako NFC kartu", { exact: true }).click();
+      await dialog.getByRole("button", { name: "Zobraziť URL pre NFC", exact: true }).click();
+      await dialog.getByLabel("URL na zápis NFC", { exact: true }).waitFor();
+      assert.equal(await dialog.locator("figure").count(), 0);
+      const nfcUrl = await dialog.getByLabel("URL na zápis NFC", { exact: true }).inputValue();
+      const nfcValue = new URL(nfcUrl).pathname.split("/").at(-1)!;
+      const status = await page.evaluate(async ({ id, token }) => (await fetch(`/api/partners/${id}/card`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, format: "card" }),
+      })).status, { id: sample.id.toString(), token: nfcValue });
+      assert.equal(status, 404, "NFC token must not be accepted for printable card artwork");
+      assert.equal(await prisma.partnerToken.count({ where: { partnerId: sample.id, isActive: true, type: "nfc" } }), 1);
+      await page.keyboard.press("Escape");
+    });
+
     await t.test("partner token dialog traps focus and restores it on close", async () => {
       const page = await session(admin.email);
       await page.goto(`${origin}/app/partneri/${partner.id}`);
-      await page.getByRole("button", { name: "Nový NFC", exact: true }).click();
-      const generate = page.getByRole("button", { name: "Vygenerovať NFC", exact: true });
-      await generate.click();
-      const dialog = page.getByRole("dialog", { name: "Token je vytvorený" });
+      const open = page.getByRole("button", { name: "Otvoriť kartu", exact: true });
+      await open.click();
+      const dialog = page.getByRole("dialog", { name: "Partnerská karta", exact: true });
       await dialog.waitFor();
+      const qrBefore = await dialog.locator("figure img").nth(1).getAttribute("src");
+      await dialog.getByText("Použiť aj ako NFC kartu", { exact: true }).click();
+      const create = dialog.getByRole("button", { name: "Aktivovať NFC", exact: true });
+      await create.waitFor();
+      const before = await prisma.partnerToken.count({ where: { partnerId: partner.id } });
+      assert.equal(await page.locator('input[name="label"]').count(), 0, "creation form must be hidden initially");
+      await create.click();
+      const creation = page.getByRole("dialog", { name: "Vytvoriť NFC prístup", exact: true });
+      await creation.waitFor();
+      await page.keyboard.press("Escape");
+      await creation.waitFor({ state: "detached" });
+      await dialog.waitFor();
+      assert.equal(await prisma.partnerToken.count({ where: { partnerId: partner.id } }), before);
+      await dialog.getByText("Použiť aj ako NFC kartu", { exact: true }).click();
+      await create.click();
+      await page.keyboard.press("Shift+Tab");
+      assert.equal(await creation.getByRole("button", { name: "Vytvoriť", exact: true })
+        .evaluate((element) => document.activeElement === element), true);
+      await page.route("**/api/partners/*/tokens", (route) => route.fulfill({
+        status: 503, contentType: "application/json",
+        body: JSON.stringify({ error: { message: "Skúšobná chyba vytvorenia prístupu." } }),
+      }));
+      await creation.getByRole("button", { name: "Vytvoriť", exact: true }).click();
+      await creation.getByRole("alert").waitFor();
+      assert.match(await creation.getByRole("alert").innerText(), /Skúšobná chyba vytvorenia/);
+      await page.unroute("**/api/partners/*/tokens");
+      await creation.getByRole("button", { name: "Vytvoriť", exact: true }).click();
+      await dialog.waitFor();
+      assert.equal(await dialog.locator("figure img").nth(1).getAttribute("src"), qrBefore,
+        "activating NFC must not replace the QR used for printed artwork");
       assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "Zavrieť");
+      await dialog.getByText("Použiť aj ako NFC kartu", { exact: true }).click();
+      const nfcUrl = await dialog.getByLabel("URL na zápis NFC", { exact: true }).inputValue();
+      assert.notEqual(nfcUrl, await dialog.getByRole("link", { name: "Otvoriť verejnú kartu", exact: true }).getAttribute("href"));
 
       await dialog.getByRole("button", { name: "Hotovo a zavrieť", exact: true }).evaluate((element) => {
         (element as HTMLButtonElement).focus();
@@ -383,9 +734,206 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
       assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "Zavrieť");
       await page.keyboard.press("Escape");
       await dialog.waitFor({ state: "detached" });
-      assert.equal(await generate.isEnabled(), true);
-      assert.equal(await generate.evaluate((element) => document.activeElement === element), true,
-        "closing the dialog should restore its now-enabled generating trigger");
+      assert.equal(await open.evaluate((element) => document.activeElement === element), true,
+        "closing the dialog should focus the newly created access action");
+      assert.equal(await page.locator('input[name="label"]').count(), 0);
+      const count = await prisma.partnerToken.count({ where: { partnerId: partner.id } });
+      await page.reload();
+      await open.click();
+      await dialog.waitFor();
+      await dialog.getByText("Použiť aj ako NFC kartu", { exact: true }).click();
+      await dialog.getByRole("button", { name: "Zobraziť URL pre NFC", exact: true }).click();
+      await dialog.getByLabel("URL na zápis NFC", { exact: true }).waitFor();
+      assert.equal(await dialog.getByLabel("URL na zápis NFC", { exact: true }).inputValue(), nfcUrl);
+      assert.match(await dialog.innerText(), /NDEF záznam typu URI/);
+      assert.equal(await prisma.partnerToken.count({ where: { partnerId: partner.id } }), count);
+      await dialog.getByText("Správa prístupov", { exact: true }).click();
+      const nfcAccess = dialog.getByRole("article", { name: "NFC prístup", exact: true });
+      await nfcAccess.getByRole("button", { name: "Nahradiť novým", exact: true }).click();
+      const replacement = page.getByRole("dialog", { name: "Nahradiť NFC prístup", exact: true });
+      await replacement.getByLabel("Potvrdzujem nahradenie:", { exact: false }).check();
+      await replacement.getByLabel("Dôvod nahradenia", { exact: false }).fill("Výmena NFC čipu");
+      await replacement.getByRole("button", { name: "Nahradiť", exact: true }).click();
+      await dialog.waitFor();
+      assert.equal(await dialog.locator("figure img").nth(1).getAttribute("src"), qrBefore);
+      await dialog.getByText("Použiť aj ako NFC kartu", { exact: true }).click();
+      assert.notEqual(await dialog.getByLabel("URL na zápis NFC", { exact: true }).inputValue(), nfcUrl);
+      await dialog.getByText("Správa prístupov", { exact: true }).click();
+      await nfcAccess.getByText("Deaktivovať NFC", { exact: true }).click();
+      await nfcAccess.getByLabel("Dôvod deaktivácie NFC", { exact: true }).fill("Stratený NFC čip");
+      await nfcAccess.getByRole("button", { name: "Potvrdiť deaktiváciu NFC", exact: true }).click();
+      await dialog.getByRole("button", { name: "Aktivovať NFC", exact: true }).waitFor();
+      assert.equal(await dialog.getByLabel("URL na zápis NFC", { exact: true }).count(), 0);
+      assert.equal(await dialog.locator("figure img").nth(1).getAttribute("src"), qrBefore,
+        "replacing and revoking NFC must preserve printed QR artwork");
+      assert.equal(await prisma.partnerToken.count({ where: { partnerId: partner.id, type: "nfc", isActive: true } }), 0);
+      assert.equal(await prisma.partnerToken.count({ where: { partnerId: partner.id, type: "qr", isActive: true } }), 1);
+      await page.keyboard.press("Escape");
+    });
+
+    await t.test("two-sided QR card previews and print PDFs preserve the issued token on mobile", async () => {
+      const page = await session(admin.email, true);
+      await page.goto(`${origin}/app/partneri/${partner.id}`);
+      await page.getByRole("button", { name: "Otvoriť kartu", exact: true }).click();
+      await page.getByText("Správa prístupov", { exact: true }).click();
+      await page.getByRole("article", { name: "QR prístup", exact: true })
+        .getByRole("button", { name: "Nahradiť novým", exact: true }).click();
+      const creation = page.getByRole("dialog", { name: "Nahradiť kartu", exact: true });
+      await creation.waitFor();
+      const submit = creation.getByRole("button", { name: "Nahradiť", exact: true });
+      const centered = await submit.evaluate((element) => {
+        const button = element.getBoundingClientRect();
+        const form = element.closest("form")!.getBoundingClientRect();
+        return Math.abs(button.x + button.width / 2 - form.x - form.width / 2);
+      });
+      assert.ok(centered < 1, "creation action must be centered on mobile");
+      await submit.click();
+      await creation.getByRole("alert").first().waitFor();
+      assert.equal(await page.getByRole("dialog", { name: "Partnerská karta", exact: true }).count(), 0);
+      await page.getByLabel("Potvrdzujem nahradenie:", { exact: false }).check();
+      await page.getByLabel("Dôvod nahradenia", { exact: false }).fill("Výmena testovacej QR karty");
+      const before = await prisma.partnerToken.count({ where: { partnerId: partner.id } });
+      const previousValue = cardToken;
+      const generated = page.waitForResponse((response) => response.url().endsWith(`/api/partners/${partner.id}/tokens`) &&
+        response.request().method() === "POST");
+      await submit.click();
+      cardToken = (await (await generated).json()).value;
+      const dialog = page.getByRole("dialog", { name: "Partnerská karta", exact: true });
+      await dialog.waitFor();
+      const previews = dialog.locator("figure img");
+      assert.equal(await previews.count(), 2);
+      await previews.evaluateAll(async (images) => {
+        await Promise.all(images.map((image) => (image as HTMLImageElement).decode()));
+      });
+      const bounds = await previews.evaluateAll((images) => images.map((image) => {
+        const rect = image.getBoundingClientRect();
+        return { x: rect.x, y: rect.y, width: rect.width, height: rect.height, right: rect.right };
+      }));
+      assert.ok(bounds[1].y > bounds[0].y, "mobile previews must be stacked");
+      for (const rect of bounds) {
+        assert.ok(rect.width > 200 && rect.right <= 390 && rect.x >= 0);
+        assert.ok(Math.abs(rect.width / rect.height - 85.6 / 53.98) < 0.02);
+      }
+      for (const label of ["PDF karty · 85,60 × 53,98 mm", "PDF na tlač · A4"]) {
+        let releaseExport!: () => void;
+        const exportGate = new Promise<void>((resolve) => { releaseExport = resolve; });
+        await page.route("**/api/partners/*/card", async (route) => {
+          await exportGate;
+          await route.fallback();
+        });
+        await dialog.getByRole("button", { name: label, exact: true }).click();
+        const busyButton = dialog.locator('button[aria-busy="true"]');
+        await busyButton.waitFor();
+        assert.equal(await busyButton.isDisabled(), true);
+        assert.equal(await busyButton.locator("svg.animate-spin").count(), 1);
+        assert.match(await dialog.getByRole("status").innerText(), /Pripravujem PDF.*niekoľko sekúnd/);
+        assert.equal(await dialog.getByRole("button", { name: label.startsWith("PDF karty")
+          ? "PDF na tlač · A4" : "PDF karty · 85,60 × 53,98 mm", exact: true }).isDisabled(), true);
+        const downloaded = page.waitForEvent("download");
+        releaseExport();
+        const download = await downloaded;
+        await page.unroute("**/api/partners/*/card");
+        await dialog.getByRole("button", { name: label, exact: true }).waitFor();
+        assert.equal(await dialog.getByRole("button", { name: label, exact: true }).isEnabled(), true);
+        assert.match(download.suggestedFilename(), /\.pdf$/);
+        const stream = await download.createReadStream();
+        const chunks: Buffer[] = [];
+        for await (const chunk of stream) chunks.push(Buffer.from(chunk));
+        const pdf = Buffer.concat(chunks);
+        assert.equal(pdf.subarray(0, 5).toString(), "%PDF-");
+        assert.match(pdf.toString("latin1"), /\/Count 2\b/);
+      }
+      assert.equal(await prisma.partnerToken.count({ where: { partnerId: partner.id } }), before + 1);
+      const original = await prisma.partnerToken.findFirst({
+        where: { tokenHash: createHash("sha256").update(previousValue).digest("hex") },
+      });
+      assert.equal(original?.isActive, false);
+      const rearImage = await previews.nth(1).getAttribute("src");
+      const publicLink = await dialog.getByRole("link", { name: "Otvoriť verejnú kartu", exact: true }).getAttribute("href");
+      await page.route("**/api/partners/*/card", (route) => route.fulfill({
+        status: 500, contentType: "application/json",
+        body: JSON.stringify({ error: { message: "Skúšobná chyba exportu karty." } }),
+      }));
+      await dialog.getByRole("button", { name: "PDF karty · 85,60 × 53,98 mm", exact: true }).click();
+      await dialog.getByRole("alert").waitFor();
+      assert.match(await dialog.getByRole("alert").innerText(), /Skúšobná chyba exportu karty/);
+      assert.equal(await dialog.getByRole("button", { name: "PDF karty · 85,60 × 53,98 mm", exact: true }).isEnabled(), true);
+      await page.unroute("**/api/partners/*/card");
+      await page.setViewportSize({ width: 1366, height: 900 });
+      await page.waitForFunction(() => {
+        const images = document.querySelectorAll('[role="dialog"] figure img');
+        return images.length === 2 && Math.abs(images[0].getBoundingClientRect().y - images[1].getBoundingClientRect().y) < 2;
+      });
+      await page.keyboard.press("Escape");
+      await dialog.waitFor({ state: "detached" });
+      await page.reload();
+      await page.getByRole("button", { name: "Otvoriť kartu", exact: true }).click();
+      await dialog.waitFor();
+      assert.equal(await dialog.locator("figure img").nth(1).getAttribute("src"), rearImage);
+      assert.equal(await dialog.getByRole("link", { name: "Otvoriť verejnú kartu", exact: true }).getAttribute("href"), publicLink);
+      assert.equal(await prisma.partnerToken.count({ where: { partnerId: partner.id } }), before + 1);
+      await page.evaluate(`(() => {
+        Object.defineProperty(navigator, "clipboard", { configurable: true, value: {
+          writeText: async (value) => { document.documentElement.dataset.copiedLink = value; },
+        } });
+        Object.defineProperty(navigator, "share", { configurable: true, value: undefined });
+      })()`);
+      await dialog.getByRole("button", { name: "Zdieľať odkaz", exact: true }).click();
+      await dialog.getByRole("status").waitFor();
+      assert.equal(await page.evaluate(() => document.documentElement.dataset.copiedLink), publicLink);
+      assert.match(await dialog.getByRole("status").innerText(), /skopírovaný/);
+      await page.evaluate(`Object.defineProperty(navigator, "clipboard", { configurable: true, value: {
+        writeText: async () => { throw new Error("Clipboard denied"); },
+      } })`);
+      await dialog.getByRole("button", { name: "Kopírovať odkaz", exact: true }).click();
+      await dialog.getByRole("alert").waitFor();
+      assert.match(await dialog.getByRole("alert").innerText(), /nepodarilo skopírovať/);
+      await page.keyboard.press("Escape");
+    });
+
+    await t.test("card export rejects foreign, mismatched, inactive and unauthorized tokens", async () => {
+      const page = await session(admin.email);
+      const endpoint = `${base}/api/partners/${partner.id}/card`;
+      const anonymousContext = await browser.newContext();
+      contexts.push(anonymousContext);
+      const anonymous = await anonymousContext.request.post(endpoint, {
+        headers: { Origin: origin }, data: { token: cardToken, format: "card" },
+      });
+      assert.equal(anonymous.status(), 401);
+      const foreignOrigin = await page.request.post(endpoint, {
+        headers: {
+          Origin: "https://foreign.example.invalid",
+          Cookie: (await page.context().cookies(origin)).map(({ name, value }) => `${name}=${value}`).join("; "),
+        },
+        data: { token: cardToken, format: "card" },
+      });
+      assert.equal(foreignOrigin.status(), 403);
+      const post = (target: Page, id: string, token = cardToken, format = "card") =>
+        target.evaluate(async ({ id, token, format }) => {
+          const response = await fetch(`/api/partners/${id}/card`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ token, format }),
+          });
+          return response.status;
+        }, { id, token, format });
+      assert.equal(await post(page, otherPartner.id.toString()), 404);
+      assert.equal(await post(page, partner.id.toString(), randomBytes(32).toString("base64url")), 404);
+      assert.equal(await post(page, partner.id.toString(), cardToken, "invalid"), 400);
+      const sellerPage = await session(seller.email);
+      assert.equal(await post(sellerPage, partner.id.toString()), 403);
+      const beta = await session(secondAdmin.email);
+      assert.equal(await post(beta, partner.id.toString()), 404);
+      const inactiveValue = randomBytes(32).toString("base64url");
+      await prisma.partnerToken.create({ data: {
+        companyId: company.id, partnerId: partner.id, type: "qr", isActive: false,
+        tokenHash: createHash("sha256").update(inactiveValue).digest("hex"),
+        tokenHint: inactiveValue.slice(0, 6), createdByUserId: admin.id,
+        deactivatedAt: new Date(), deactivatedByUserId: admin.id, deactivationReason: "Test",
+      } });
+      assert.equal(await post(page, partner.id.toString(), inactiveValue), 404);
+      const exports = await prisma.auditLog.findMany({ where: { companyId: company.id, action: "export.partner_card" } });
+      assert.equal(exports.length, 2);
+      for (const entry of exports) assert.doesNotMatch(JSON.stringify(entry.newValues), /token|\/k\//i);
     });
 
     await t.test("desktop filters, pagination, change details and private-value masking", async () => {
@@ -763,16 +1311,21 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
       });
 
       await t.test("logout and history navigation do not restore an authenticated company page", async () => {
-        const page = await session(admin.email);
-        await page.goto(`${origin}/app/audit`);
-        await page.getByRole("link", { name: /Browser Alpha Partner/ }).first().waitFor();
-        await page.getByRole("button", { name: "Odhlásiť", exact: true }).filter({ visible: true }).click();
-        await page.waitForURL((url) => url.pathname === "/login");
-        await page.goBack();
-        await page.waitForURL((url) => url.pathname === "/login");
-        assert.doesNotMatch(await page.locator("body").innerText(), /Browser Alpha Partner|Browser audit 44/);
-        const response = await page.context().request.get(`${base}/api/audit-logs`);
-        assert.equal(response.status(), 401);
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const page = await session(admin.email);
+          await page.goto(`${origin}/app/audit`);
+          await page.getByRole("link", { name: /Browser Alpha Partner/ }).first().waitFor();
+          await page.getByRole("button", { name: "Odhlásiť", exact: true }).filter({ visible: true }).click();
+          await page.waitForURL((url) => url.pathname === "/login");
+          assert.equal(new URL(page.url()).origin, origin);
+          await page.goBack();
+          await page.waitForURL((url) => url.pathname === "/login");
+          await page.getByLabel("E-mail", { exact: true }).waitFor();
+          assert.doesNotMatch(await page.locator("body").innerText(), /Browser Alpha Partner|Browser audit 44/);
+          const response = await page.context().request.get(`${base}/api/audit-logs`);
+          assert.equal(response.status(), 401);
+          await page.context().close();
+        }
       });
     }
     if (process.env.ACCEPTANCE_PRIVACY === "1") {
@@ -852,7 +1405,7 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
         assert.equal(await history.locator("ol > li").count(), 1);
         assert.match(await history.locator("ol").innerText(), /V tlačenej podobe|Verzia 1/);
         const sectionHeadings = await page.locator("main h2").allTextContents();
-        const orderedHeadings = ["Mesačné ocenenia", "QR a NFC tokeny", "Nákupy", "Informovanie o spracúvaní údajov", "Audit partnera"];
+        const orderedHeadings = ["Mesačné ocenenia", "Partnerská karta", "Nákupy", "Informovanie o spracúvaní údajov", "Audit partnera"];
         const positions = orderedHeadings.map((heading) => sectionHeadings.indexOf(heading));
         assert.ok(positions.every((position, index) => position >= 0 && (index === 0 || position > positions[index - 1])),
           `Partner sections must follow the requested order: ${sectionHeadings.join(", ")}`);

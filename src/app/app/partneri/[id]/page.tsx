@@ -7,6 +7,7 @@ import { PartnerTokenManager } from "@/components/partners/partner-token-manager
 import { AuditEntryList, type AuditEntryItem } from "@/components/audit/audit-entry-list";
 import { PurchaseHistory, type PurchaseItem } from "@/components/purchases/purchase-history";
 import { env } from "@/lib/env";
+import { companyLogoDataUrl } from "@/lib/company-logo";
 import { badgeLabel, getMonthlyBadge, type BadgeTier } from "@/lib/monthly-badges";
 import { zonedMonthRange } from "@/lib/dates";
 import { requireCompanyPage } from "@/server/auth/session";
@@ -150,6 +151,8 @@ export default async function PartnerDetailPage({
         ) : <p className="mt-4 text-sm text-stone-600">Zatiaľ bez uzavretých mesačných ocenení.</p>}
       </section>
       <PartnerTokenManager
+        companyName={context.company.name}
+        companyLogoUrl={companyLogoDataUrl(context.company.logoData)}
         partnerId={partner.id.toString()}
         partnerName={partner.displayName}
         partnerCode={partner.code}

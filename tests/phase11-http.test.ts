@@ -9,12 +9,13 @@ import type { User } from "@prisma/client";
 import ts from "typescript";
 import { prisma } from "../src/server/db";
 import { generatePartnerCode } from "../src/server/partners";
+import { encryptToken } from "../src/server/token-crypto";
 
 const base = "http://127.0.0.1:3017";
 const origin = "https://partners.example.invalid";
 const cookieName = "__Secure-authjs.session-token";
 type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
-type Access = "tenant-admin" | "tenant-staff" | "superadmin" | "account" | "auth" | "public" | "cron" | "logo" | "privacy";
+type Access = "tenant-admin" | "tenant-staff" | "superadmin" | "account" | "auth" | "public" | "cron" | "health" | "logo" | "privacy";
 type Endpoint = { route: string; method: Method; access: Access; success?: number };
 
 // Each explicit handler export needs a role/guard case, including factory-created handlers.
@@ -35,6 +36,7 @@ const endpoints: Endpoint[] = [
   { route: "/api/company/settings", method: "GET", access: "tenant-admin" },
   { route: "/api/company/settings", method: "PATCH", access: "tenant-admin" },
   { route: "/api/cron/close-monthly-badges", method: "POST", access: "cron" },
+  { route: "/api/health", method: "GET", access: "health" },
   ...["audit-logs", "monthly", "partners", "purchases"].map((kind): Endpoint => ({
     route: `/api/exports/${kind}.csv`, method: "GET", access: "tenant-admin",
   })),
@@ -44,6 +46,7 @@ const endpoints: Endpoint[] = [
   { route: "/api/partners/[id]", method: "GET", access: "tenant-admin" },
   { route: "/api/partners/[id]", method: "PATCH", access: "tenant-admin" },
   { route: "/api/partners/[id]/activate", method: "POST", access: "tenant-admin" },
+  { route: "/api/partners/[id]/card", method: "POST", access: "tenant-admin" },
   { route: "/api/partners/[id]/deactivate", method: "POST", access: "tenant-admin" },
   { route: "/api/partners/[id]/privacy", method: "GET", access: "privacy" },
   { route: "/api/partners/[id]/privacy", method: "POST", access: "privacy" },
@@ -71,6 +74,7 @@ const endpoints: Endpoint[] = [
   { route: "/api/superadmin/company-context", method: "POST", access: "superadmin" },
   { route: "/api/superadmin/company-context", method: "DELETE", access: "superadmin" },
   { route: "/api/tokens/[tokenId]/deactivate", method: "POST", access: "tenant-admin" },
+  { route: "/api/tokens/[tokenId]/open", method: "POST", access: "tenant-admin" },
   { route: "/api/users", method: "GET", access: "tenant-admin" },
   { route: "/api/users", method: "POST", access: "tenant-admin", success: 201 },
   { route: "/api/users/[id]", method: "PATCH", access: "tenant-admin" },
@@ -197,6 +201,10 @@ test("phase 11 complete endpoint role guards and tenant boundaries", async (t) =
       const token = await prisma.partnerToken.create({ data: {
         companyId: company.id, partnerId: partner.id, type: "qr",
         tokenHash: createHash("sha256").update(value).digest("hex"), tokenHint: value.slice(0, 6),
+        tokenEncrypted: encryptToken(value, {
+          companyId: company.id, partnerId: partner.id, type: "qr",
+          tokenHash: createHash("sha256").update(value).digest("hex"),
+        }, process.env.TOKEN_ENCRYPTION_KEY),
         createdByUserId: admin.id,
       } });
       const purchase = await prisma.purchase.create({ data: {
@@ -213,6 +221,19 @@ test("phase 11 complete endpoint role guards and tenant boundaries", async (t) =
       role: "superadmin", passwordHash, mustChangePassword: false,
     } });
     const actors = { anonymous: undefined, seller: first.seller, admin: first.admin, superadmin };
+    await t.test("oversized and malformed JSON writes are rejected without persistent side effects", async () => {
+      const admin = await clientFor(first.admin);
+      const before = await prisma.company.findUniqueOrThrow({ where: { id: first.company.id } });
+      const auditCount = await prisma.auditLog.count({ where: { companyId: first.company.id } });
+      await expectStatus(await admin.request("/api/company/settings", {
+        method: "PATCH", body: JSON.stringify({ value: "x".repeat(1_048_576) }),
+      }), 413, "oversized settings payload", "PAYLOAD_TOO_LARGE");
+      await expectStatus(await admin.request("/api/company/settings", {
+        method: "PATCH", body: "{",
+      }), 400, "malformed settings payload", "INVALID_JSON");
+      assert.deepEqual(await prisma.company.findUniqueOrThrow({ where: { id: first.company.id } }), before);
+      assert.equal(await prisma.auditLog.count({ where: { companyId: first.company.id } }), auditCount);
+    });
     type Actor = keyof typeof actors;
     const tenant = (entry: Endpoint) => entry.access === "tenant-admin" || entry.access === "tenant-staff";
     function pathFor(entry: Endpoint, target = first) {
@@ -238,6 +259,7 @@ test("phase 11 complete endpoint role guards and tenant boundaries", async (t) =
         privacy: { noticeId: target.notice.id.toString(), providedAt: new Date().toISOString(), method: "in_person" },
       };
       if (entry.route === "/api/partners/[id]") return { displayName: "Phase11 updated" };
+      if (entry.route === "/api/partners/[id]/card") return { token: target.value, format: "card" };
       if (entry.route.endsWith("/tokens")) return { type: "qr", label: "Phase11 matrix" };
       if (entry.route === "/api/purchases") return {
         partnerId: target.partner.id.toString(), amount: "12.30", partnerPresent: true,
@@ -279,7 +301,19 @@ test("phase 11 complete endpoint role guards and tenant boundaries", async (t) =
           body: new URLSearchParams({ csrfToken: csrf.csrfToken, callbackUrl: `${base}/login` }),
         });
       }
-      return client.request(pathFor(entry, target), initFor(entry, target),
+      let init = initFor(entry, target);
+      if (entry.route.endsWith("/tokens") && entry.method === "POST") {
+        const active = await prisma.partnerToken.findMany({
+          where: { companyId: target.company.id, partnerId: target.partner.id, type: "nfc", isActive: true },
+          select: { id: true },
+        });
+        init = json("POST", {
+          type: "nfc", label: "Phase11 matrix",
+          deactivateTokenIds: active.map((token) => token.id.toString()),
+          ...(active.length ? { deactivationReason: "Phase11 explicit replacement" } : {}),
+        });
+      }
+      return client.request(pathFor(entry, target), init,
         actor === "superadmin" && context && tenant(entry) ? first.company.id : undefined);
     }
 
@@ -289,7 +323,7 @@ test("phase 11 complete endpoint role guards and tenant boundaries", async (t) =
           let status = entry.success ?? 200;
           let code: string | undefined;
           if (entry.access === "cron") { status = 401; code = "UNAUTHENTICATED"; }
-          else if (!["auth", "public"].includes(entry.access)) {
+          else if (!["auth", "public", "health"].includes(entry.access)) {
             if (actor === "anonymous") { status = 401; code = "UNAUTHENTICATED"; }
             else if ((entry.access === "superadmin" && actor !== "superadmin") ||
               (entry.access === "tenant-admin" && actor === "seller") ||

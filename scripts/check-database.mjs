@@ -1,8 +1,9 @@
 import "dotenv/config";
 
 import { PrismaClient } from "@prisma/client";
+import { createDatabaseAdapter } from "../src/server/db-adapter.mjs";
 
-const prisma = new PrismaClient({ log: [] });
+const prisma = new PrismaClient({ adapter: createDatabaseAdapter(process.env.DATABASE_URL), log: [] });
 
 try {
   const rows = await prisma.$queryRaw`SELECT 1 AS connection_check`;

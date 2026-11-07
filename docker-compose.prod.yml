@@ -1,0 +1,163 @@
+name: partnerseuropodlahy-prod
+
+services:
+  db:
+    image: mariadb:11.4
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD_FILE: /run/secrets/db_root_password
+      DB_ROOT_PASSWORD_FILE: /run/secrets/db_root_password
+      MARIADB_DATABASE: europodlahy
+      DB_APP_PASSWORD_FILE: /run/secrets/db_app_password
+      DB_MIGRATE_PASSWORD_FILE: /run/secrets/db_migrate_password
+      TZ: UTC
+    secrets:
+      - db_root_password
+      - db_app_password
+      - db_migrate_password
+    volumes:
+      - mariadb_data:/var/lib/mysql
+      - ./docker/mariadb/conf.d:/etc/mysql/conf.d:ro
+      - ./docker/mariadb/prod-init:/docker-entrypoint-initdb.d:ro
+      - ./docker/mariadb/grant-app-privileges.sh:/docker/grant-app-privileges.sh:ro
+    networks:
+      - database
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  app:
+    image: ${APP_IMAGE:-partners-program:local}
+    build:
+      context: .
+      target: runner
+      args:
+        APP_BASE_URL: ${APP_BASE_URL:?Set APP_BASE_URL in the production environment}
+    restart: unless-stopped
+    environment:
+      APP_BASE_URL: ${APP_BASE_URL:?Set APP_BASE_URL in the production environment}
+      APP_TIMEZONE: ${APP_TIMEZONE:-Europe/Bratislava}
+      AUTH_SECRET_FILE: /run/secrets/auth_secret
+      AUTH_TRUST_HOST: "true"
+      AUTH_URL: ${APP_BASE_URL:?Set APP_BASE_URL in the production environment}
+      BADGE_CRON_SECRET_FILE: /run/secrets/badge_cron_secret
+      DATABASE_URL_FILE: /run/secrets/database_url
+      TOKEN_ENCRYPTION_KEY_FILE: /run/secrets/token_encryption_key
+      LOCAL_QUICK_LOGIN_ENABLED: "false"
+      NODE_ENV: production
+      RATE_LIMIT_LOGIN_PER_MIN: ${RATE_LIMIT_LOGIN_PER_MIN:-10}
+      RATE_LIMIT_PUBLIC_PER_MIN: ${RATE_LIMIT_PUBLIC_PER_MIN:-30}
+      SESSION_ADMIN_IDLE_MINUTES: ${SESSION_ADMIN_IDLE_MINUTES:-30}
+      SESSION_ADMIN_MAX_HOURS: ${SESSION_ADMIN_MAX_HOURS:-8}
+      SESSION_SELLER_IDLE_MINUTES: ${SESSION_SELLER_IDLE_MINUTES:-60}
+      SESSION_SELLER_MAX_HOURS: ${SESSION_SELLER_MAX_HOURS:-10}
+      TZ: UTC
+    secrets:
+      - auth_secret
+      - badge_cron_secret
+      - database_url
+      - token_encryption_key
+    expose:
+      - "3000"
+    networks:
+      - frontend
+      - database
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/api/health').then((response) => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  migrate:
+    image: ${MIGRATE_IMAGE:-partners-program-migrate:local}
+    build:
+      context: .
+      target: builder
+      args:
+        APP_BASE_URL: ${APP_BASE_URL:?Set APP_BASE_URL in the production environment}
+    profiles:
+      - migration
+    command: ["npm", "run", "db:deploy"]
+    environment:
+      DATABASE_URL_FILE: /run/secrets/database_url
+      MIGRATE_DATABASE_URL_FILE: /run/secrets/migrate_database_url
+      NODE_ENV: production
+    entrypoint: ["/usr/local/bin/partners-entrypoint"]
+    secrets:
+      - database_url
+      - migrate_database_url
+    networks:
+      - database
+    depends_on:
+      db:
+        condition: service_healthy
+
+  proxy:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    environment:
+      APP_BASE_URL: ${APP_BASE_URL:?Set APP_BASE_URL in the production environment}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - frontend
+    depends_on:
+      app:
+        condition: service_healthy
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+volumes:
+  mariadb_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  frontend:
+  database:
+    internal: true
+
+secrets:
+  auth_secret:
+    file: ${AUTH_SECRET_FILE:?Set AUTH_SECRET_FILE to the mounted auth secret path}
+  badge_cron_secret:
+    file: ${BADGE_CRON_SECRET_FILE:?Set BADGE_CRON_SECRET_FILE to the mounted cron secret path}
+  database_url:
+    file: ${DATABASE_URL_FILE:?Set DATABASE_URL_FILE to the app database URL secret path}
+  db_app_password:
+    file: ${DB_APP_PASSWORD_FILE:?Set DB_APP_PASSWORD_FILE to the app DB password secret path}
+  db_migrate_password:
+    file: ${DB_MIGRATE_PASSWORD_FILE:?Set DB_MIGRATE_PASSWORD_FILE to the migration DB password secret path}
+  db_root_password:
+    file: ${MARIADB_ROOT_PASSWORD_FILE:?Set MARIADB_ROOT_PASSWORD_FILE to the MariaDB root password secret path}
+  migrate_database_url:
+    file: ${MIGRATE_DATABASE_URL_FILE:?Set MIGRATE_DATABASE_URL_FILE to the migration DB URL secret path}
+  token_encryption_key:
+    file: ${TOKEN_ENCRYPTION_KEY_FILE:?Set TOKEN_ENCRYPTION_KEY_FILE to the token encryption key secret path}

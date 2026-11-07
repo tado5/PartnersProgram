@@ -6,6 +6,7 @@ import { AppShell, type ShellNavItem } from "@/components/app-shell";
 import { requireCompanyPage } from "@/server/auth/session";
 import { CompanyProvider, DocumentLink } from "@/components/company-context";
 import { companyLogoDataUrl } from "@/lib/company-logo";
+import { manualChapters } from "@/lib/manual";
 
 export const instant = false;
 
@@ -43,6 +44,7 @@ export default async function AppLayout({
         ] satisfies ShellNavItem[]
       : [{ href: "/app/partneri", label: "Vyhľadať partnera", icon: "search" }] satisfies ShellNavItem[]),
     { href: "/change-password", label: "Zmeniť heslo", icon: "password" },
+    { href: "/app/manual", label: "Manuál", icon: "manual", children: manualChapters(context.user.role, "/app/manual") },
   ];
 
   return (

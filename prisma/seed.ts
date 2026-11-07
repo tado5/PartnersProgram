@@ -4,8 +4,9 @@ import { Prisma, PrismaClient } from "@prisma/client";
 import { env } from "../src/lib/env";
 import { netAmountFromGross, pointsForAmount } from "../src/lib/purchases";
 import { bootstrapUser } from "./bootstrap";
+import { createDatabaseAdapter } from "../src/server/db-adapter.mjs";
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({ adapter: createDatabaseAdapter(env.DATABASE_URL) });
 
 const partnerNames = [
   ["installer", "Ján Kováč"],

@@ -6,12 +6,13 @@ import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
-  BarChart3, Building2, ClipboardList, FileDown, KeyRound, LayoutDashboard, LogOut, Menu, PanelLeftClose,
+  BarChart3, BookOpen, Building2, ClipboardList, FileDown, KeyRound, LayoutDashboard, LogOut, Menu, PanelLeftClose,
   PanelLeftOpen, ScanLine, Search, Settings, ShoppingCart, UserCog, Users, X,
   type LucideIcon,
 } from "lucide-react";
 
 import { DocumentLink } from "@/components/company-context";
+import { ActionLabel } from "@/components/action-label";
 
 const icons = {
   dashboard: LayoutDashboard,
@@ -26,6 +27,7 @@ const icons = {
   companies: Building2,
   audit: ClipboardList,
   password: KeyRound,
+  manual: BookOpen,
 } satisfies Record<string, LucideIcon>;
 
 export type ShellNavItem = {
@@ -36,6 +38,7 @@ export type ShellNavItem = {
   /** Full document navigation (needed when leaving the company context). */
   document?: boolean;
   highlight?: boolean;
+  children?: { href: string; label: string }[];
 };
 
 const COLLAPSED_KEY = "app-shell-collapsed";
@@ -61,6 +64,19 @@ export function AppShell({
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState("");
+  async function logout() {
+    if (signingOut) return;
+    setSigningOut(true);
+    setSignOutError("");
+    try {
+      await signOut({ redirectTo: "/login" });
+    } catch {
+      setSignOutError("Odhlásenie sa nepodarilo. Skúste to znova.");
+      setSigningOut(false);
+    }
+  }
   const mobileMenuRef = useRef<HTMLElement>(null);
   const mobileTriggerRef = useRef<HTMLButtonElement>(null);
   const currentItem = items
@@ -82,7 +98,7 @@ export function AppShell({
       : null;
     const trigger = mobileTriggerRef.current;
     const firstFocusable = mobileMenuRef.current?.querySelector<HTMLElement>(
-      'a[href], button:not([disabled])',
+      'a[href], button:not([disabled]), summary',
     );
     firstFocusable?.focus();
     const onKey = (event: KeyboardEvent) => {
@@ -92,7 +108,7 @@ export function AppShell({
       }
       if (event.key !== "Tab" || !mobileMenuRef.current) return;
       const focusable = Array.from(
-        mobileMenuRef.current.querySelectorAll<HTMLElement>('a[href], button:not([disabled])'),
+        mobileMenuRef.current.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), summary'),
       );
       if (!focusable.length) return;
       const first = focusable[0];
@@ -156,6 +172,31 @@ export function AppShell({
             <Icon aria-hidden className={`size-5 shrink-0 ${active || item.highlight ? "text-primary" : ""}`} />
             <span className={compact ? "sr-only" : "truncate"}>{item.label}</span>
           </>;
+          if (item.children) {
+            if (compact) return (
+              <Link key={item.href} href={item.href} className={className} title={item.label}
+                aria-current={active ? "page" : undefined}>{content}</Link>
+            );
+            return (
+              <details key={`${item.href}:${active}`} open={active} className="group">
+                <summary className={`${className} cursor-pointer list-none`}>
+                  {content}<span aria-hidden className="ml-auto text-xs group-open:rotate-180">⌄</span>
+                </summary>
+                <ul className="ml-5 mt-1 space-y-1 border-l border-white/15 pl-3">
+                  {[{ href: item.href, label: "Všetky kapitoly" }, ...item.children].map((chapter) => {
+                    const selected = pathname === chapter.href;
+                    return <li key={chapter.href}>
+                      <Link href={chapter.href} onClick={() => setMobileOpen(false)}
+                        aria-current={selected ? "page" : undefined}
+                        className={`block rounded-lg px-3 py-2 text-sm leading-5 ${selected ? "bg-primary/15 text-white" : "text-white/70 hover:bg-white/10 hover:text-white"}`}>
+                        {chapter.label}
+                      </Link>
+                    </li>;
+                  })}
+                </ul>
+              </details>
+            );
+          }
           return item.document ? (
             <DocumentLink key={item.href} href={item.href} className={className}>{content}</DocumentLink>
           ) : (
@@ -182,13 +223,18 @@ export function AppShell({
         <button
           ref={mobileTriggerRef}
           type="button"
-          onClick={() => signOut({ redirectTo: "/login" })}
-          title={compact ? "Odhlásiť" : undefined}
+          disabled={signingOut}
+          aria-busy={signingOut}
+          onClick={() => void logout()}
+          title={compact ? signingOut ? "Odhlasujem…" : "Odhlásiť" : undefined}
           className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-stone-600 transition hover:bg-stone-100 hover:text-stone-950 ${compact ? "justify-center px-2" : ""}`}
         >
-          <LogOut aria-hidden className="size-5 shrink-0" />
-          <span className={compact ? "sr-only" : ""}>Odhlásiť</span>
+          {signingOut ? <ActionLabel busy compact={compact} pending="Odhlasujem…">{null}</ActionLabel> : <>
+            <LogOut aria-hidden className="size-5 shrink-0" />
+            <span className={compact ? "sr-only" : ""}>Odhlásiť</span>
+          </>}
         </button>
+        {signOutError ? <p role="alert" className="px-3 text-sm text-red-700">{signOutError}</p> : null}
       </div>
     );
   }
