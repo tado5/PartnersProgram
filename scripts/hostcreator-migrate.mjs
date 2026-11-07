@@ -19,7 +19,9 @@ const { parse } = require("dotenv");
 const configuration = parse(readFileSync(resolve(root, "../shared/.env")));
 const url = configuration.MIGRATE_DATABASE_URL;
 if (!url) throw new Error("shared/.env must contain MIGRATE_DATABASE_URL for the migration account.");
-if (url === configuration.DATABASE_URL) throw new Error("Migration and application accounts must use separate connection URLs.");
+if (mode === "deploy" && url === configuration.DATABASE_URL) {
+  throw new Error("Migration and application accounts must use separate connection URLs for deploy.");
+}
 if (mode === "deploy" && process.env.HOSTCREATOR_MIGRATIONS_APPROVED !== "yes") {
   throw new Error("Migration deploy requires HOSTCREATOR_MIGRATIONS_APPROVED=yes after backup, data review and operator approval.");
 }

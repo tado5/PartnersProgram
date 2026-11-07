@@ -113,6 +113,15 @@ process.exit(process.argv[3] === "status" ? 1 : 0);
     assert.deepEqual(recorded.args, ["migrate", "status", "--config", "prisma.config.mjs"]);
     execFileSync(process.execPath, [runner, "deploy"], { env: { ...env, HOSTCREATOR_MIGRATIONS_APPROVED: "yes" }, stdio: "pipe" });
     assert.equal(JSON.parse(await readFile(evidence, "utf8")).args[1], "deploy");
+    await writeFile(join(shared, ".env"), "DATABASE_URL=mysql://app:synthetic@localhost/db\nMIGRATE_DATABASE_URL=mysql://app:synthetic@localhost/db\n");
+    assert.throws(() => execFileSync(process.execPath, [runner, "status"], { env, stdio: "pipe" }), (error) => error.status === 1);
+    assert.equal(JSON.parse(await readFile(evidence, "utf8")).args[1], "status");
+    assert.equal(JSON.parse(await readFile(evidence, "utf8")).url, "mysql://app:synthetic@localhost/db");
+    await rm(evidence);
+    assert.throws(() => execFileSync(process.execPath, [runner, "deploy"], {
+      env: { ...env, HOSTCREATOR_MIGRATIONS_APPROVED: "yes" }, stdio: "pipe",
+    }), /separate connection URLs for deploy/);
+    await assert.rejects(readFile(evidence), /ENOENT/);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

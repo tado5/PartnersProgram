@@ -256,8 +256,10 @@ Status nemení DB. Nenulový návratový kód môže znamenať čakajúce migrá
 neinicializovanú históriu alebo chybu: prečítajte výstup, neobchádzajte ho.
 Wrapper načíta migračnú URL výhradne zo `shared/.env`, nie zo syntetických
 CI/build premenných; do migračného procesu neodovzdáva GitHub token ani
-aplikačné tajomstvá. `MIGRATE_DATABASE_URL` je povinná a musí byť odlišná
-od aplikačnej `DATABASE_URL`; migračný účet a jeho práva overí prevádzkovateľ.
+aplikačné tajomstvá. `MIGRATE_DATABASE_URL` je povinná. Read-only `status`
+môže používať existujúci účet aj pri totožnej `DATABASE_URL`, bez zmeny účtov.
+Pre `deploy` musí byť URL odlišná od aplikačnej `DATABASE_URL`;
+migračný účet a jeho práva overí prevádzkovateľ.
 
 Pred ostrým nasadením treba vytvoriť a overiť zálohu DB mimo tohto balíka,
 skontrolovať dáta a potrebné migrácie podľa časti 6 (najmä tokenové duplicity),
