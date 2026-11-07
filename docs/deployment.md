@@ -134,7 +134,10 @@ nastavuje priamo; prihlasovacie presmerovania proxy tiež používajú
 `npm run build` najprv spustí `npm run db:generate` a až po úspešnom
 vygenerovaní Prisma klienta spustí `next build`. Nakoniec
 `scripts/prepare-standalone.mjs` doplní `public` a `.next/static` do standalone
-balíka; Next.js ich sám nekopíruje. `npm start` spúšťa
+balíka; Next.js ich sám nekopíruje.
+Ak projekt nemá voliteľný priečinok `public`, príprava vytvorí prázdny
+`standalone/public`; čistý checkout preto nevyžaduje lokálny prázdny adresár.
+`npm start` spúšťa
 `node .next/standalone/server.js`, teda rovnaký server ako Docker, nie
 nekompatibilný `next start`. Pre lokálny štart možno nastaviť
 `HOSTNAME=127.0.0.1 PORT=3000 npm start`.
@@ -163,6 +166,71 @@ obsahuje 16 MODERATE záznamov vo vývojovom lint nástroji (`minimatch`).
 Nie je to dôkaz nulového rizika ani súhlas s neoverenými override/downgrade.
 Presné výsledky a otvorené podmienky sú v
 [centrálnom checkliste](production-remediation-checklist.md).
+
+## 8a. HostCreators: hotový balík z GitHub Actions
+
+Táto alternatíva nepotrebuje Docker ani build na hostingu. Iba push do `main` vytvorí
+artefakt `hostcreator-standalone-<commit>` s `runtime.tar.gz`, `commit.txt`
+a `SHA256SUMS`. Obsahuje iba standalone runtime vrátane statických súborov;
+`.env` súbory sú vylúčené. Build používa Linux x64 Ubuntu 24.04 a Node.js 24,
+s produkčným `APP_BASE_URL=https://partners.europodlahy.sk` a syntetickými
+CI tajomstvami. Artefakt sa uchováva 7 dní. Pred prvým publikovaním overte
+kompatibilitu natívnych závislostí na skutočnom runtime serveri, nielen SSH.
+
+V HostCreators nastavte prepojenú GIT vetvu na **`main`**, nie feature vetvu.
+CI kontroly zostávajú aj pre feature vetvy a pull requesty, ale nevytvárajú
+deploy artefakt. Hostingový webhook musí sledovať iba `main`; samotné CI
+nastavenie nezmení vetvu vybranú vo WebAdmine.
+
+V HostCreators nastavte Bash krok **pred** Next.js preset, pracovný adresár
+`/` (nový `release_*`), s obsahom:
+
+```bash
+bash scripts/hostcreator-prepare.sh
+```
+
+V časti **Premenné prostredia** nastavte `HOSTCREATOR_GITHUB_TOKEN` na
+fine-grained GitHub token obmedzený na tento repozitár s oprávnením
+**Actions: Read-only** (a povinným Metadata read). Token nevkladajte do Bash
+poľa, Gitu ani `.env` aplikácie. Overte, že ho HostCreators bezpečne uchováva
+a maskuje v logoch; obmedzte prístup k administrácii a pravidelne ho rotujte.
+Skript neposiela token na úložisko so signed download URL a nevypisuje ho.
+
+Skript čaká najviac 25 minút na úspešné dokončenie **celého push CI na `main`**
+pre presný commit klonovaný hostingom, teda aj acceptance a audit jobov.
+Zlyhanie, timeout, chýbajúci/expirujúci artefakt alebo neplatný balík zastavia
+deploy. Workflow pre pull request ani samotný workflow_dispatch artefakt
+nevytvárajú. Pôvodný push webhook môže zostať zapnutý; Bash čaká na CI,
+ale súčet čakania a publikovania musí vojsť do limitu hostingu 1800 sekúnd.
+Ak CI trvá dlhšie, zopakujte deploy až po jeho úspešnom dokončení.
+
+Produkčný `.env` musí byť bezpečne zachovaný v `shared/.env` (práva `600`).
+Skript ho kopíruje do nového release aj standalone adresára bez vypísania
+obsahu. Aktívny release, odkaz `current` ani staré release nemaže a neprepína.
+Zdrojový checkout zostáva malý; pôvodné build `node_modules` sa neinštalujú.
+V standalone zostáva jeho vlastný nevyhnutný runtime `node_modules`.
+
+**Prvý pokus má byť iba príprava:** za Bash príkaz pridajte `exit 1`.
+HostCreators má zastaviť proces pred presetom/publikovaním. Overte veľkosť,
+kompletnosť balíka a log. Až pred schváleným ostrým nasadením odstráňte
+`exit 1`. V Next.js presete vypnite `npm install`, `npm prune`,
+`npm run build` a dodatočné `npm run %s`; ponechajte `npm run start`,
+Node.js 24 a existujúci port. Pracovný adresár s `package.json` zostáva `/`;
+existujúci `npm start` spúšťa `.next/standalone/server.js`.
+
+**Migrácie nie sú súčasťou tohto balíka.** Nevypínajte pôvodný `db:deploy`
+a nepublikujte novú aplikáciu bez kontroly pripravenosti DB. Pred ostrým
+nasadením treba po schválenej zálohe aplikovať potrebné migrácie samostatným
+prostredím s Prisma CLI a migračným účtom a nastaviť aplikačné DB práva.
+Runtime balík neposkytuje `npm run db:deploy`; tento krok nemožno jednoducho
+presunúť za download. Pre prvý diagnostický pokus sa nevykonáva žiadna migrácia.
+Táto príprava nemení používateľské workflow aplikácie, preto nemení in-app manuál.
+
+Publikovanie a reštart naďalej vykonáva HostCreators preset. Ich fungovanie
+s vypnutým install/build treba potvrdiť prvým schváleným nasadením.
+Potom overte `/api/health`, login a smoke scenáre z časti 9.
+Starý aktívny release zachovajte do úspešného overenia; automatické čistenie
+release ani rollback databázy skript nevykonáva.
 
 ## 9. Deploy (server s Dockerom)
 - `docker-compose.prod.yml`: `app` (non-root, bez publikovaného portu), `db` (iba interná sieť, bez verejného portu), `migrate` (spustí sa len explicitne cez profil `migration`) a `proxy` (`caddy:2.10.2-alpine`, Let's Encrypt, HSTS, presmerovanie HTTP→HTTPS). Databázový init vytvára iba produkčnú DB a oddelené migračné/aplikačné účty; migračný účet má práva iba v aplikačnej DB. Aplikačné tabuľkové práva nastavujú po migrácii existujúce `db:permissions`.

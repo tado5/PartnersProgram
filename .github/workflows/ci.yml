@@ -15,7 +15,7 @@ concurrency:
 jobs:
   quality:
     name: Lint, typecheck, unit tests, and production build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       NODE_ENV: production
       APP_BASE_URL: https://partners.example.invalid
@@ -33,7 +33,30 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run test:unit
+      - run: node --test tests/hostcreator-deployment.test.mjs
       - run: npm run build
+        env:
+          APP_BASE_URL: https://partners.europodlahy.sk
+      - name: Package HostCreators standalone runtime
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p hostcreator-artifact
+          tar --exclude='.env' --exclude='.env.*' \
+            -czf hostcreator-artifact/runtime.tar.gz -C .next/standalone .
+          printf '%s\n' "$GITHUB_SHA" > hostcreator-artifact/commit.txt
+          (cd hostcreator-artifact && sha256sum runtime.tar.gz > SHA256SUMS)
+          du -sh .next/standalone hostcreator-artifact/runtime.tar.gz
+      - name: Upload HostCreators runtime
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: hostcreator-standalone-${{ github.sha }}
+          path: hostcreator-artifact/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
 
   acceptance:
     name: Isolated standalone API and browser acceptance
