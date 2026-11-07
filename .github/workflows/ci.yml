@@ -38,6 +38,14 @@ jobs:
       - run: npm run build
         env:
           APP_BASE_URL: https://partners.europodlahy.sk
+      - name: Prepare Alpine native runtime dependencies
+        run: |
+          docker run --rm --platform linux/amd64 --user "$(id -u):$(id -g)" \
+            -e npm_config_cache=/tmp/npm-cache \
+            -v "$PWD/scripts/hostcreator-native:/native" -w /native \
+            node:24-alpine npm ci --ignore-scripts
+          npm audit --prefix scripts/hostcreator-native --audit-level=high
+          node scripts/prepare-hostcreator-native.mjs
       - name: Package HostCreators standalone runtime
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         shell: bash
@@ -85,6 +93,13 @@ jobs:
       - run: npm ci --include=dev
       - run: npx playwright install --with-deps chromium
       - run: npm run build
+      - name: Prepare Alpine native runtime dependencies
+        run: |
+          docker run --rm --platform linux/amd64 --user "$(id -u):$(id -g)" \
+            -e npm_config_cache=/tmp/npm-cache \
+            -v "$PWD/scripts/hostcreator-native:/native" -w /native \
+            node:24-alpine npm ci --ignore-scripts
+          node scripts/prepare-hostcreator-native.mjs
       - name: Prepare isolated migration tools for database acceptance
         run: |
           npm ci --prefix scripts/hostcreator-migration
@@ -98,7 +113,24 @@ jobs:
             printf '%s=%s\n' "$name" "$value" >> "$GITHUB_ENV"
           done
       - run: docker compose up -d --wait db
-      - run: ACCEPTANCE_PHASE11=1 npm run test:acceptance
+      - name: Download the exact main deployment artifact for Alpine acceptance
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/download-artifact@v4
+        with:
+          name: hostcreator-standalone-${{ github.sha }}
+          path: ${{ runner.temp }}/hostcreator-artifact
+      - name: Verify and extract the deployment runtime for Alpine acceptance
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/hostcreator-artifact"
+          test "$(cat commit.txt)" = "$GITHUB_SHA"
+          sha256sum -c SHA256SUMS
+          mkdir "$RUNNER_TEMP/hostcreator-runtime"
+          tar -xzf runtime.tar.gz -C "$RUNNER_TEMP/hostcreator-runtime"
+          printf 'ACCEPTANCE_ALPINE_RUNTIME=%s\n' "$RUNNER_TEMP/hostcreator-runtime" >> "$GITHUB_ENV"
+      - run: ACCEPTANCE_ALPINE=1 ACCEPTANCE_PHASE11=1 npm run test:acceptance
       - name: Stop the disposable CI database
         if: always()
         run: docker compose down

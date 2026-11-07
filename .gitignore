@@ -3,6 +3,7 @@
 # dependencies
 /node_modules
 /scripts/hostcreator-migration/node_modules/
+/scripts/hostcreator-native/node_modules/
 /.pnp
 .pnp.*
 .yarn/*

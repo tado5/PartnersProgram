@@ -182,6 +182,13 @@ a manifest ciest a SHA-256 súčtov sledovaných zdrojových súborov;
 s produkčným `APP_BASE_URL=https://partners.europodlahy.sk` a syntetickými
 CI tajomstvami. Artefakt sa uchováva 7 dní. Pred prvým publikovaním overte
 kompatibilitu natívnych závislostí na skutočnom runtime serveri, nielen SSH.
+HostCreators spúšťa aplikáciu v Node.js 24 Alpine (musl), kým SSH a CI používajú
+iné prostredie. CI preto do hotového runtime dopĺňa samostatne zamknuté musl
+balíčky Argon2 a sharp zo `scripts/hostcreator-native` a kontroluje ich verzie
+oproti zabaleným knižniciam. Pri aktualizácii Argon2 alebo sharp aktualizujte
+aj tento manifest a lockfile. Acceptance pred publikovaním overuje natívne
+knižnice, DB readiness a skutočné prihlásenie v Linux x64 Alpine kontajneri
+na izolovanej testovacej databáze; produkčné dáta ani účty sa nemenia.
 
 V HostCreators nastavte prepojenú GIT vetvu na **`main`**, nie feature vetvu.
 CI kontroly zostávajú aj pre feature vetvy a pull requesty, ale nevytvárajú

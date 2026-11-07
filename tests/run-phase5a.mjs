@@ -4,6 +4,7 @@ import { randomBytes, createHash } from "node:crypto";
 import { hash } from "@node-rs/argon2";
 import dotenv from "dotenv";
 import assert from "node:assert/strict";
+import { resolve } from "node:path";
 
 // Isolated Docker DB only: never uses or resets existing development/test databases.
 const database = "europodlahy_5a_validation";
@@ -105,6 +106,25 @@ try {
     BADGE_CRON_SECRET: badgeCronSecret, PHASE7_BADGE_CRON_SECRET: badgeCronSecret,
     RATE_LIMIT_LOGIN_PER_MIN: "1000", RATE_LIMIT_PUBLIC_PER_MIN: "1000",
   };
+  if (process.env.ACCEPTANCE_ALPINE === "1") {
+    const containerId = execFileSync("docker", ["compose", "ps", "-q", "db"], { encoding: "utf8" }).trim();
+    const networks = JSON.parse(execFileSync("docker", ["inspect", "--format",
+      "{{json .NetworkSettings.Networks}}", containerId], { encoding: "utf8" }));
+    const network = Object.keys(networks)[0];
+    assert.ok(network, "Isolated validation DB must have a Docker network.");
+    const alpineEnv = {
+      NODE_ENV: env.NODE_ENV, APP_BASE_URL: env.APP_BASE_URL, AUTH_URL: env.AUTH_URL,
+      AUTH_SECRET: env.AUTH_SECRET, AUTH_TRUST_HOST: env.AUTH_TRUST_HOST,
+      LOCAL_QUICK_LOGIN_ENABLED: "false", PHASE5A_PASSWORD: password,
+      DATABASE_URL: url("europodlahy_app", values.DB_APP_PASSWORD).replace("@127.0.0.1:3308/", "@db:3306/"),
+    };
+    const alpine = spawnSync("docker", ["run", "--rm", "-i", "--platform", "linux/amd64",
+      "--network", network, "--mount", `type=bind,src=${resolve(process.env.ACCEPTANCE_ALPINE_RUNTIME ?? ".next/standalone")},dst=/app,readonly`,
+      "--workdir", "/app", ...Object.keys(alpineEnv).flatMap(key => ["--env", key]),
+      "node:24-alpine", "node", "--input-type=module"],
+    { input: readFileSync("tests/hostcreator-alpine-smoke.mjs"), env: { ...process.env, ...alpineEnv }, stdio: ["pipe", "inherit", "inherit"] });
+    assert.equal(alpine.status, 0, "HostCreators Alpine runtime acceptance failed.");
+  }
   server = spawn("node", [".next/standalone/server.js"], {
     env: { ...env, HOSTNAME: "127.0.0.1", PORT: "3017" }, stdio: "inherit",
   });

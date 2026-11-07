@@ -11,6 +11,43 @@ import { fileURLToPath } from "node:url";
 
 const sha = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
 
+test("Alpine native packaging includes locked binaries and rejects mismatched versions", async () => {
+  const root = await mkdtemp(join(tmpdir(), "partners-native-test-"));
+  try {
+    await mkdir(join(root, "scripts"), { recursive: true });
+    await cp(new URL("../scripts/prepare-hostcreator-native.mjs", import.meta.url),
+      join(root, "scripts/prepare-hostcreator-native.mjs"));
+    const runtime = join(root, ".next/standalone");
+    await mkdir(runtime, { recursive: true });
+    await writeFile(join(runtime, "server.js"), "");
+    for (const [parent, native, version] of [
+      ["@node-rs/argon2", "@node-rs/argon2-linux-x64-musl", "2.0.2"],
+      ["sharp", "@img/sharp-linuxmusl-x64", "0.35.5"],
+      ["sharp", "@img/sharp-libvips-linuxmusl-x64", "1.3.4"],
+    ]) {
+      const parentDirectory = join(runtime, "node_modules", parent);
+      const binaryDirectory = join(root, "scripts/hostcreator-native/node_modules", native);
+      await mkdir(parentDirectory, { recursive: true });
+      await mkdir(binaryDirectory, { recursive: true });
+      const path = join(parentDirectory, "package.json");
+      let metadata = { optionalDependencies: {} };
+      if (parent === "sharp" && native.includes("libvips")) metadata = JSON.parse(await readFile(path, "utf8"));
+      metadata.optionalDependencies[native] = version;
+      await writeFile(path, JSON.stringify(metadata));
+      await writeFile(join(binaryDirectory, "package.json"), JSON.stringify({ version }));
+      await writeFile(join(binaryDirectory, "binding.node"), "synthetic-binary");
+    }
+    const script = join(root, "scripts/prepare-hostcreator-native.mjs");
+    execFileSync(process.execPath, [script]);
+    assert.equal(await readFile(join(runtime, "node_modules/@node-rs/argon2-linux-x64-musl/binding.node"), "utf8"), "synthetic-binary");
+    await writeFile(join(root, "scripts/hostcreator-native/node_modules/@node-rs/argon2-linux-x64-musl/package.json"),
+      JSON.stringify({ version: "0.0.0" }));
+    assert.throws(() => execFileSync(process.execPath, [script], { stdio: "pipe" }), /version mismatch/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 async function download({ conclusion = "success", expired = false, artifactSha = sha, status = 200 } = {}) {
   const directory = await mkdtemp(join(tmpdir(), "partners-artifact-test-"));
   const destination = join(directory, "artifact.zip");
