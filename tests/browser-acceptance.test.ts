@@ -829,10 +829,28 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
         assert.match(await dialog.getByRole("status").innerText(), /Pripravujem PDF.*niekoľko sekúnd/);
         assert.equal(await dialog.getByRole("button", { name: label.startsWith("PDF karty")
           ? "PDF na tlač · A4" : "PDF karty · 85,60 × 53,98 mm", exact: true }).isDisabled(), true);
-        const downloaded = page.waitForEvent("download");
-        releaseExport();
-        const download = await downloaded;
-        await page.unroute("**/api/partners/*/card");
+        const downloaded = page.waitForEvent("download", { timeout: 60_000 });
+        const exported = page.waitForResponse((response) =>
+          response.url().endsWith(`/api/partners/${partner.id}/card`) &&
+          response.request().method() === "POST", { timeout: 60_000 });
+        const startedAt = Date.now();
+        const verifiedResponse = exported.then((response) => {
+          assert.equal(response.status(), 200, "Card PDF endpoint must succeed before downloading.");
+          assert.match(response.headers()["content-type"] ?? "", /application\/pdf/);
+          console.info(JSON.stringify({
+            measurement: "isolated-card-pdf-export",
+            format: label.startsWith("PDF karty") ? "card" : "a4",
+            responseMs: Date.now() - startedAt,
+          }));
+        });
+        let download;
+        try {
+          releaseExport();
+          [download] = await Promise.all([downloaded, verifiedResponse]);
+        } finally {
+          await page.unroute("**/api/partners/*/card");
+        }
+        assert.equal(await download.failure(), null, "Browser must complete the card PDF download.");
         await dialog.getByRole("button", { name: label, exact: true }).waitFor();
         assert.equal(await dialog.getByRole("button", { name: label, exact: true }).isEnabled(), true);
         assert.match(download.suggestedFilename(), /\.pdf$/);
