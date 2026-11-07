@@ -258,8 +258,10 @@ Wrapper načíta migračnú URL výhradne zo `shared/.env`, nie zo syntetických
 CI/build premenných; do migračného procesu neodovzdáva GitHub token ani
 aplikačné tajomstvá. `MIGRATE_DATABASE_URL` je povinná. Read-only `status`
 môže používať existujúci účet aj pri totožnej `DATABASE_URL`, bez zmeny účtov.
-Pre `deploy` musí byť URL odlišná od aplikačnej `DATABASE_URL`;
-migračný účet a jeho práva overí prevádzkovateľ.
+Pre `deploy` sa odporúča oddelený migračný účet; jeho práva overí prevádzkovateľ.
+Ak hosting používa rovnaký existujúci účet, runner ho nemení a povoľuje
+deploy iba s ďalším explicitným `HOSTCREATOR_SHARED_DB_ACCOUNT_APPROVED=yes`.
+Toto schválenie nemení DB oprávnenia; existujúci účet musí mať potrebné práva.
 
 Pred ostrým nasadením treba vytvoriť a overiť zálohu DB mimo tohto balíka,
 skontrolovať dáta a potrebné migrácie podľa časti 6 (najmä tokenové duplicity),
@@ -273,6 +275,20 @@ HOSTCREATOR_MIGRATIONS_APPROVED=yes node scripts/hostcreator-migrate.mjs deploy
 Schválenie nezapisujte ako trvalú premennú WebAdminu. Zlyhanie migrácie musí
 zastaviť publikovanie cez `set -e`. Runner nepripája shadow DB, neseeduje,
 neresetuje a nevracia migrácie späť. Potom treba overiť aplikačné DB práva.
+Výnimku bez zálohy smie schváliť iba prevádzkovateľ po výslovnom prijatí
+rizika straty dát alebo čiastočnej migrácie; nezapínajte ju automaticky.
+Pre schválené použitie existujúceho spoločného účtu:
+
+```bash
+HOSTCREATOR_MIGRATIONS_APPROVED=yes \
+HOSTCREATOR_SHARED_DB_ACCOUNT_APPROVED=yes \
+node scripts/hostcreator-migrate.mjs deploy
+node scripts/hostcreator-migrate.mjs status
+```
+
+Pri prvom publikovaní odstráňte koncové `exit 1` až po tomto schválení,
+vypnite install/prune/build aj pôvodný `npm run db:deploy` v presete
+a ponechajte iba `npm run start` s Node.js 24 a existujúcim portom.
 Pôvodný preset `npm run db:deploy` vypnite až pri prechode na tento schválený
 krok; root `node_modules` sa neinštalujú, preto pôvodný príkaz nebude fungovať.
 Prvý pokus zostáva s `exit 1` a statusom, nie s deploy.

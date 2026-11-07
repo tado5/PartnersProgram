@@ -120,8 +120,14 @@ process.exit(process.argv[3] === "status" ? 1 : 0);
     await rm(evidence);
     assert.throws(() => execFileSync(process.execPath, [runner, "deploy"], {
       env: { ...env, HOSTCREATOR_MIGRATIONS_APPROVED: "yes" }, stdio: "pipe",
-    }), /separate connection URLs for deploy/);
+    }), /requires HOSTCREATOR_SHARED_DB_ACCOUNT_APPROVED/);
     await assert.rejects(readFile(evidence), /ENOENT/);
+    execFileSync(process.execPath, [runner, "deploy"], {
+      env: { ...env, HOSTCREATOR_MIGRATIONS_APPROVED: "yes", HOSTCREATOR_SHARED_DB_ACCOUNT_APPROVED: "yes" },
+      stdio: "pipe",
+    });
+    assert.equal(JSON.parse(await readFile(evidence, "utf8")).args[1], "deploy");
+    assert.equal(JSON.parse(await readFile(evidence, "utf8")).url, recorded.url.replace("migrate:", "app:"));
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
