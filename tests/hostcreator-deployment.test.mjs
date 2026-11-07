@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, readlink, rm, symlink, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, readlink, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -73,6 +73,49 @@ test("expired and wrong-commit artifacts are rejected", async () => {
 
 test("GitHub authorization errors are explicit", async () => {
   await assert.rejects(download({ status: 403 }), /HTTP 403/);
+});
+
+test("migration wrapper uses shared configuration, requires approval and propagates CLI failure", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "partners-migration-test-"));
+  const release = join(directory, "sub/partners/release_20261107080507");
+  const bundle = join(release, ".next/standalone/.hostcreator-migrate");
+  const shared = join(directory, "sub/partners/shared");
+  const evidence = join(bundle, "cli-evidence.json");
+  try {
+    await mkdir(join(release, "scripts"), { recursive: true });
+    await mkdir(join(bundle, "node_modules/prisma/build"), { recursive: true });
+    await mkdir(shared);
+    await cp(new URL("../node_modules/dotenv", import.meta.url), join(bundle, "node_modules/dotenv"), { recursive: true });
+    await writeFile(join(bundle, "package.json"), '{"private":true}');
+    await writeFile(join(release, "scripts/hostcreator-migrate.mjs"), await readFile(new URL("../scripts/hostcreator-migrate.mjs", import.meta.url)));
+    await writeFile(join(shared, ".env"), "DATABASE_URL=mysql://app:synthetic@localhost/db\nMIGRATE_DATABASE_URL=mysql://migrate:synthetic@localhost/db\n");
+    await writeFile(join(bundle, "node_modules/prisma/build/index.js"), `
+const fs = require("node:fs");
+fs.writeFileSync("cli-evidence.json", JSON.stringify({
+  args: process.argv.slice(2),
+  url: process.env.MIGRATE_DATABASE_URL,
+  token: process.env.HOSTCREATOR_GITHUB_TOKEN,
+  shadow: process.env.SHADOW_DATABASE_URL,
+  environment: process.env.NODE_ENV
+}));
+process.exit(process.argv[3] === "status" ? 1 : 0);
+`);
+    const runner = join(release, "scripts/hostcreator-migrate.mjs");
+    const env = { ...process.env, HOSTCREATOR_GITHUB_TOKEN: "synthetic-token", MIGRATE_DATABASE_URL: "synthetic-build-url" };
+    assert.throws(() => execFileSync(process.execPath, [runner, "deploy"], { env, stdio: "pipe" }), /requires HOSTCREATOR_MIGRATIONS_APPROVED/);
+    await assert.rejects(readFile(evidence), /ENOENT/);
+    assert.throws(() => execFileSync(process.execPath, [runner, "status"], { env, stdio: "pipe" }), (error) => error.status === 1);
+    const recorded = JSON.parse(await readFile(evidence, "utf8"));
+    assert.equal(recorded.url, "mysql://migrate:synthetic@localhost/db");
+    assert.equal(recorded.token, undefined);
+    assert.equal(recorded.shadow, undefined);
+    assert.equal(recorded.environment, "production");
+    assert.deepEqual(recorded.args, ["migrate", "status", "--config", "prisma.config.mjs"]);
+    execFileSync(process.execPath, [runner, "deploy"], { env: { ...env, HOSTCREATOR_MIGRATIONS_APPROVED: "yes" }, stdio: "pipe" });
+    assert.equal(JSON.parse(await readFile(evidence, "utf8")).args[1], "deploy");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 test("source verification without Git metadata rejects changed, extra, missing and symlinked sources", async () => {

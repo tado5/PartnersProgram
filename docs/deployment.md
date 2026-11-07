@@ -238,12 +238,42 @@ kompletnosť balíka a log. Až pred schváleným ostrým nasadením odstráňte
 Node.js 24 a existujúci port. Pracovný adresár s `package.json` zostáva `/`;
 existujúci `npm start` spúšťa `.next/standalone/server.js`.
 
-**Migrácie nie sú súčasťou tohto balíka.** Nevypínajte pôvodný `db:deploy`
-a nepublikujte novú aplikáciu bez kontroly pripravenosti DB. Pred ostrým
-nasadením treba po schválenej zálohe aplikovať potrebné migrácie samostatným
-prostredím s Prisma CLI a migračným účtom a nastaviť aplikačné DB práva.
-Runtime balík neposkytuje `npm run db:deploy`; tento krok nemožno jednoducho
-presunúť za download. Pre prvý diagnostický pokus sa nevykonáva žiadna migrácia.
+**Migračné nástroje sú v `.next/standalone/.hostcreator-migrate`.**
+CI inštaluje samostatný uzamknutý balík iba s Prisma CLI a dotenv, audituje
+jeho závislosti a pridáva schému, migrácie a konfiguráciu bez seed/reset.
+Prisma CLI musí mať rovnakú verziu ako aplikácia. CI pripravuje schema engine
+pre Debian aj RHEL s OpenSSL 3; funkčnosť na hostingu overí read-only status.
+Hosting neinštaluje npm závislosti. Migračný balík je súčasťou kontrolného
+súčtu runtime archívu; zvyšuje jeho veľkosť oproti pôvodným 95 MiB.
+
+Po príprave balíka môže prvý Bash krok pred svojím `exit 1` spustiť:
+
+```bash
+node scripts/hostcreator-migrate.mjs status
+```
+
+Status nemení DB. Nenulový návratový kód môže znamenať čakajúce migrácie,
+neinicializovanú históriu alebo chybu: prečítajte výstup, neobchádzajte ho.
+Wrapper načíta migračnú URL výhradne zo `shared/.env`, nie zo syntetických
+CI/build premenných; do migračného procesu neodovzdáva GitHub token ani
+aplikačné tajomstvá. `MIGRATE_DATABASE_URL` je povinná a musí byť odlišná
+od aplikačnej `DATABASE_URL`; migračný účet a jeho práva overí prevádzkovateľ.
+
+Pred ostrým nasadením treba vytvoriť a overiť zálohu DB mimo tohto balíka,
+skontrolovať dáta a potrebné migrácie podľa časti 6 (najmä tokenové duplicity),
+overiť na kópii a explicitne schváliť zmenu DB. Až potom možno v Bash kroku
+po príprave namiesto statusu použiť:
+
+```bash
+HOSTCREATOR_MIGRATIONS_APPROVED=yes node scripts/hostcreator-migrate.mjs deploy
+```
+
+Schválenie nezapisujte ako trvalú premennú WebAdminu. Zlyhanie migrácie musí
+zastaviť publikovanie cez `set -e`. Runner nepripája shadow DB, neseeduje,
+neresetuje a nevracia migrácie späť. Potom treba overiť aplikačné DB práva.
+Pôvodný preset `npm run db:deploy` vypnite až pri prechode na tento schválený
+krok; root `node_modules` sa neinštalujú, preto pôvodný príkaz nebude fungovať.
+Prvý pokus zostáva s `exit 1` a statusom, nie s deploy.
 Táto príprava nemení používateľské workflow aplikácie, preto nemení in-app manuál.
 
 Publikovanie a reštart naďalej vykonáva HostCreators preset. Ich fungovanie

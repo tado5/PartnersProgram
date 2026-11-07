@@ -43,6 +43,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          PRISMA_CLI_BINARY_TARGETS=debian-openssl-3.0.x,rhel-openssl-3.0.x \
+            npm ci --prefix scripts/hostcreator-migration
+          npm audit --prefix scripts/hostcreator-migration --audit-level=high
+          node scripts/prepare-hostcreator-migration.mjs
           mkdir -p hostcreator-artifact
           node scripts/hostcreator-source-manifest.mjs create hostcreator-artifact/source-manifest.json "$GITHUB_SHA"
           tar --exclude='.env' --exclude='.env.*' \
@@ -81,6 +85,10 @@ jobs:
       - run: npm ci --include=dev
       - run: npx playwright install --with-deps chromium
       - run: npm run build
+      - name: Prepare isolated migration tools for database acceptance
+        run: |
+          npm ci --prefix scripts/hostcreator-migration
+          node scripts/prepare-hostcreator-migration.mjs
       - name: Generate ephemeral database credentials
         shell: bash
         run: |

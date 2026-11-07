@@ -1,5 +1,5 @@
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { randomBytes, createHash } from "node:crypto";
 import { hash } from "@node-rs/argon2";
 import dotenv from "dotenv";
@@ -182,6 +182,17 @@ try {
   });
   if (deploy.status !== 0) console.error(deploy.stdout, deploy.stderr);
   assert.equal(deploy.status, 0, "Prisma migrate deploy must succeed on a fresh isolated database.");
+  const migrationBundle = ".next/standalone/.hostcreator-migrate";
+  if (existsSync(`${migrationBundle}/node_modules/prisma/build/index.js`)) {
+    const packagedStatus = spawnSync("node", ["node_modules/prisma/build/index.js", "migrate", "status",
+      "--config", "prisma.config.mjs"], {
+      cwd: migrationBundle,
+      env: { ...env, NODE_ENV: "production", MIGRATE_DATABASE_URL: env.TEST_DATABASE_URL },
+      encoding: "utf8",
+    });
+    if (packagedStatus.status !== 0) console.error(packagedStatus.stdout, packagedStatus.stderr);
+    assert.equal(packagedStatus.status, 0, "Packaged HostCreators Prisma CLI must see the isolated DB as up to date.");
+  }
   const diff = spawnSync("node", ["node_modules/prisma/build/index.js", "migrate", "diff",
     "--from-config-datasource", "--to-schema", "prisma/schema.prisma",
     "--exit-code"], { env: { ...env, DATABASE_URL: env.TEST_DATABASE_URL }, encoding: "utf8" });
