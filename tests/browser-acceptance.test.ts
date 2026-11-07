@@ -1377,9 +1377,27 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
         await registration.getByRole("button", { name: "Vytvoriť partnera", exact: true }).click();
         assert.equal(await prisma.partner.count({ where: { companyId: company.id, displayName: "Browser informed partner" } }), 0);
         await registration.locator('select[name="privacyMethod"]').selectOption("printed");
+        for (const raw of [
+          "2026-11-07T08:00:55.080", "2026-11-07T08:00:55.000",
+          "2026-11-07T08:00:00.000", "2026-11-07T08:00:55.100",
+        ]) {
+          const canonical = await page.evaluate((value) => {
+            const input = document.createElement("input");
+            input.type = "datetime-local";
+            input.value = value;
+            return input.value;
+          }, raw);
+          const providedAt = registration.locator('input[name="privacyProvidedAt"]');
+          await providedAt.fill(canonical);
+          assert.equal(await providedAt.inputValue(), canonical);
+          assert.equal(await providedAt.evaluate((input: HTMLInputElement) => input.valueAsNumber), Date.parse(`${raw}Z`));
+        }
         const localTime = await page.evaluate(() => {
           const now = new Date();
-          return new Date(now.getTime() - now.getTimezoneOffset() * 60_000).toISOString().slice(0, -1);
+          const input = document.createElement("input");
+          input.type = "datetime-local";
+          input.value = new Date(now.getTime() - now.getTimezoneOffset() * 60_000).toISOString().slice(0, -1);
+          return input.value;
         });
         await registration.locator('input[name="privacyProvidedAt"]').fill(localTime);
         await registration.locator('input[name="privacyConfirmed"]').check();
