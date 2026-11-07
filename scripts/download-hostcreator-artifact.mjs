@@ -1,5 +1,5 @@
-import { execFileSync } from "node:child_process";
-import { createWriteStream } from "node:fs";
+import { createWriteStream, writeFileSync } from "node:fs";
+import { join, dirname } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -8,11 +8,6 @@ const token = process.env.HOSTCREATOR_GITHUB_TOKEN;
 const destination = process.argv[2];
 if (!token || !destination) {
   throw new Error("HOSTCREATOR_GITHUB_TOKEN and a destination ZIP path are required.");
-}
-
-const sha = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
-if (!/^[a-f0-9]{40}$/.test(sha)) {
-  throw new Error("Cannot identify the checked-out deployment commit.");
 }
 
 const api = "https://api.github.com/repos/tado5/PartnersProgram";
@@ -35,27 +30,38 @@ async function request(path, redirect = "follow") {
 }
 
 let runId;
-console.info(`Waiting for successful main push CI for commit ${sha}.`);
+let sha;
+let completed = false;
+console.info("Waiting for successful main push CI; checkout sources will be verified before preparation.");
 while (Date.now() < deadline) {
-  const response = await request(`/actions/workflows/ci.yml/runs?head_sha=${sha}&branch=main&event=push&per_page=5`);
+  const response = await request(runId ? `/actions/runs/${runId}` : `/actions/workflows/ci.yml/runs?branch=main&event=push&per_page=5`);
   const data = await response.json();
-  if (!Array.isArray(data.workflow_runs)) {
+  if (runId && (data.id !== runId || data.head_sha !== sha || data.head_branch !== "main" || data.event !== "push")) {
+    throw new Error("GitHub returned a mismatched CI run identity.");
+  }
+  if (!runId && !Array.isArray(data.workflow_runs)) {
     throw new Error("GitHub returned an invalid workflow-run response.");
   }
-  const run = data.workflow_runs
-    .filter((item) => item.head_sha === sha && item.head_branch === "main" && item.event === "push")
+  const run = (runId ? [data] : data.workflow_runs)
+    .filter((item) => (!runId || item.id === runId) && item.head_branch === "main" && item.event === "push")
     .sort((a, b) => b.id - a.id)[0];
+  if (run && !runId) {
+    if (!Number.isSafeInteger(run.id) || !/^[a-f0-9]{40}$/.test(run.head_sha)) throw new Error("Invalid CI run identity.");
+    runId = run.id;
+    sha = run.head_sha;
+  }
   if (run?.status === "completed") {
     if (run.conclusion !== "success") {
       throw new Error(`CI run ${run.id} finished with ${run.conclusion}; deployment stopped.`);
     }
     if (!Number.isSafeInteger(run.id)) throw new Error("Invalid CI run ID.");
-    runId = run.id;
+    completed = true;
     break;
   }
+  if (Date.now() + 15_000 >= deadline) throw new Error("Timed out waiting for CI; retry deployment after CI completes.");
   await sleep(15_000);
 }
-if (!runId) throw new Error("Timed out waiting for CI; retry deployment after CI completes.");
+if (!completed) throw new Error("Timed out waiting for CI; retry deployment after CI completes.");
 
 const response = await request(`/actions/runs/${runId}/artifacts?per_page=100`);
 const data = await response.json();
@@ -78,4 +84,5 @@ if (!download.ok || !download.body) {
   throw new Error(`Artifact download failed (HTTP ${download.status}).`);
 }
 await pipeline(Readable.fromWeb(download.body), createWriteStream(destination, { mode: 0o600 }));
+writeFileSync(join(dirname(destination), "selected-commit.txt"), `${sha}\n`, { mode: 0o600 });
 console.info(`Runtime artifact downloaded from successful CI run ${runId}.`);

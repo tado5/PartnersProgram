@@ -44,6 +44,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p hostcreator-artifact
+          node scripts/hostcreator-source-manifest.mjs create hostcreator-artifact/source-manifest.json "$GITHUB_SHA"
           tar --exclude='.env' --exclude='.env.*' \
             -czf hostcreator-artifact/runtime.tar.gz -C .next/standalone .
           printf '%s\n' "$GITHUB_SHA" > hostcreator-artifact/commit.txt

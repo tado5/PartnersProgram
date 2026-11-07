@@ -5,6 +5,9 @@ import { mkdir, mkdtemp, readFile, readlink, rm, symlink, writeFile } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { createSourceManifest, verifySourceManifest } from "../scripts/hostcreator-source-manifest.mjs";
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const sha = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
 
@@ -53,7 +56,7 @@ test("downloads only an artifact from successful push CI for the deployment comm
   const result = await download();
   assert.equal(result.contents, "synthetic-artifact");
   assert.equal(result.requests.length, 4);
-  assert.match(result.requests[0].url, new RegExp(`head_sha=${sha}&branch=main&event=push`));
+  assert.match(result.requests[0].url, /branch=main&event=push/);
   assert.equal(result.requests[2].options.redirect, "manual");
 });
 
@@ -70,6 +73,51 @@ test("expired and wrong-commit artifacts are rejected", async () => {
 
 test("GitHub authorization errors are explicit", async () => {
   await assert.rejects(download({ status: 403 }), /HTTP 403/);
+});
+
+test("source verification without Git metadata rejects changed, extra, missing and symlinked sources", async () => {
+  const root = await mkdtemp(join(tmpdir(), "partners-source-test-"));
+  const content = "synthetic-source\n";
+  const manifest = { commit: sha, files: [{ path: "src/app.ts", sha256: createHash("sha256").update(content).digest("hex") }] };
+  try {
+    await mkdir(join(root, "src"));
+    await writeFile(join(root, "src/app.ts"), content);
+    await writeFile(join(root, ".env"), "SYNTHETIC_RUNTIME_ONLY=1\n");
+    verifySourceManifest(root, manifest, sha);
+    assert.throws(() => verifySourceManifest(root, manifest, "0".repeat(40)), /mismatched commit/);
+    await writeFile(join(root, "src/app.ts"), "changed");
+    assert.throws(() => verifySourceManifest(root, manifest, sha), /source mismatch/);
+    await writeFile(join(root, "src/app.ts"), content);
+    await writeFile(join(root, "src/extra.ts"), "extra");
+    assert.throws(() => verifySourceManifest(root, manifest, sha), /Unexpected deployment source/);
+    await rm(join(root, "src/extra.ts"));
+    await rm(join(root, "src/app.ts"));
+    assert.throws(() => verifySourceManifest(root, manifest, sha), /ENOENT/);
+    await writeFile(join(root, "target.ts"), content);
+    await symlink(join(root, "target.ts"), join(root, "src/app.ts"));
+    assert.throws(() => verifySourceManifest(root, manifest, sha), /symlink/);
+    assert.throws(() => verifySourceManifest(root, { commit: sha, files: [{ path: "../outside", sha256: "0".repeat(64) }] }, sha), /manifest path/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("CI manifest verifies a complete exported checkout with no .git directory", async () => {
+  const root = fileURLToPath(new URL("../", import.meta.url));
+  const exported = await mkdtemp(join(tmpdir(), "partners-exported-source-"));
+  try {
+    const manifest = createSourceManifest(root, sha);
+    assert.ok(manifest.files.some((file) => file.path === ".env.example"));
+    assert.ok(!manifest.files.some((file) => file.path === ".env" || file.path === ".env.production"));
+    for (const file of manifest.files) {
+      const path = join(exported, file.path);
+      await mkdir(dirname(path), { recursive: true });
+      await writeFile(path, await readFile(join(root, file.path)));
+    }
+    verifySourceManifest(exported, manifest, sha);
+  } finally {
+    await rm(exported, { recursive: true, force: true });
+  }
 });
 
 test("standalone preparation supports a clean checkout without optional public assets", async () => {
@@ -100,14 +148,14 @@ test("Node ZIP extraction accepts stored and compressed files and rejects corrup
   try {
     const source = join(directory, "source");
     await mkdir(source);
-    for (const name of ["runtime.tar.gz", "commit.txt", "SHA256SUMS"]) {
+    for (const name of ["runtime.tar.gz", "commit.txt", "SHA256SUMS", "source-manifest.json"]) {
       await writeFile(join(source, name), `${name}\n`.repeat(name === "runtime.tar.gz" ? 100 : 1));
     }
     for (const compression of ["0", "9"]) {
       const archive = join(directory, `archive-${compression}.zip`);
       const output = join(directory, `output-${compression}`);
       await mkdir(output);
-      execFileSync("zip", ["-q", `-${compression}`, archive, "runtime.tar.gz", "commit.txt", "SHA256SUMS"], { cwd: source });
+      execFileSync("zip", ["-q", `-${compression}`, archive, "runtime.tar.gz", "commit.txt", "SHA256SUMS", "source-manifest.json"], { cwd: source });
       execFileSync(process.execPath, [extractor, archive, output]);
       assert.deepEqual(await readFile(join(output, "runtime.tar.gz")), await readFile(join(source, "runtime.tar.gz")));
     }
@@ -121,8 +169,8 @@ test("Node ZIP extraction accepts stored and compressed files and rejects corrup
     assert.throws(() => execFileSync(process.execPath, [extractor, archive, output], { stdio: "pipe" }), /checksum mismatch/);
     await writeFile(join(source, "unexpected.txt"), "unexpected");
     const extra = join(directory, "extra.zip");
-    execFileSync("zip", ["-q", extra, "runtime.tar.gz", "commit.txt", "SHA256SUMS", "unexpected.txt"], { cwd: source });
-    assert.throws(() => execFileSync(process.execPath, [extractor, extra, output], { stdio: "pipe" }), /exactly three/);
+    execFileSync("zip", ["-q", extra, "runtime.tar.gz", "commit.txt", "SHA256SUMS", "source-manifest.json", "unexpected.txt"], { cwd: source });
+    assert.throws(() => execFileSync(process.execPath, [extractor, extra, output], { stdio: "pipe" }), /exactly four/);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -144,12 +192,16 @@ test("Bash prepares a verified runtime without modifying the active release", as
     await symlink("release_20261019102821", join(directory, "sub/partners/current"));
     await mkdir(join(directory, "sub/partners/release_20261019102821"));
     await writeFile(join(shared, ".env"), "SYNTHETIC_ENV=test-only\n");
+    await writeFile(join(release, "package.json"), '{"name":"synthetic-source"}\n');
     await writeFile(join(runtime, "server.js"), "// Synthetic runtime fixture\n");
     // Stand in for the Linux preflight and network download; extraction uses real tools.
     await writeFile(join(bin, "node"), `#!/bin/bash
 if [[ "$1" == "-e" ]]; then exit 0; fi
 if [[ "$1" == "scripts/download-hostcreator-artifact.mjs" ]]; then
   cp "$HOSTCREATOR_TEST_ZIP" "$2"
+  printf '%s\\n' "$HOSTCREATOR_TEST_SHA" > "$(dirname "$2")/selected-commit.txt"
+elif [[ "$1" == "scripts/hostcreator-source-manifest.mjs" ]]; then
+  exec "$HOSTCREATOR_TEST_NODE" "$HOSTCREATOR_TEST_MANIFEST" "$2" "$3" "$4"
 else
   exec "$HOSTCREATOR_TEST_NODE" "$HOSTCREATOR_TEST_EXTRACTOR" "$2" "$3"
 fi
@@ -165,15 +217,20 @@ if (expected !== actual) process.exit(1);
     const checksum = createHash("sha256").update(await readFile(join(artifact, "runtime.tar.gz"))).digest("hex");
     await writeFile(join(artifact, "SHA256SUMS"), `${checksum}  runtime.tar.gz\n`);
     await writeFile(join(artifact, "commit.txt"), `${sha}\n`);
+    await writeFile(join(artifact, "source-manifest.json"), JSON.stringify({
+      commit: sha,
+      files: [{ path: "package.json", sha256: createHash("sha256").update(await readFile(join(release, "package.json"))).digest("hex") }],
+    }));
     const zip = join(directory, "artifact.zip");
-    execFileSync("zip", ["-q", zip, "runtime.tar.gz", "SHA256SUMS", "commit.txt"], { cwd: artifact });
+    execFileSync("zip", ["-q", zip, "runtime.tar.gz", "SHA256SUMS", "commit.txt", "source-manifest.json"], { cwd: artifact });
     const env = {
       ...process.env,
       PATH: `${bin}:${process.env.PATH}`,
       HOSTCREATOR_TEST_ZIP: zip,
       HOSTCREATOR_TEST_NODE: process.execPath,
+      HOSTCREATOR_TEST_SHA: sha,
+      HOSTCREATOR_TEST_MANIFEST: new URL("../scripts/hostcreator-source-manifest.mjs", import.meta.url).pathname,
       HOSTCREATOR_TEST_EXTRACTOR: new URL("../scripts/extract-hostcreator-artifact.mjs", import.meta.url).pathname,
-      GIT_DIR: execFileSync("git", ["rev-parse", "--absolute-git-dir"], { encoding: "utf8" }).trim(),
     };
     execFileSync("bash", [script.pathname], { cwd: release, env });
     assert.equal(await readFile(join(release, ".next/standalone/.env"), "utf8"), "SYNTHETIC_ENV=test-only\n");
@@ -186,7 +243,7 @@ if (expected !== actual) process.exit(1);
     execFileSync("tar", ["-czf", join(artifact, "runtime.tar.gz"), "-C", runtime, "."]);
     const unsafeChecksum = createHash("sha256").update(await readFile(join(artifact, "runtime.tar.gz"))).digest("hex");
     await writeFile(join(artifact, "SHA256SUMS"), `${unsafeChecksum}  runtime.tar.gz\n`);
-    execFileSync("zip", ["-q", zip, "runtime.tar.gz", "SHA256SUMS", "commit.txt"], { cwd: artifact });
+    execFileSync("zip", ["-q", zip, "runtime.tar.gz", "SHA256SUMS", "commit.txt", "source-manifest.json"], { cwd: artifact });
     assert.throws(() => execFileSync("bash", [script.pathname], { cwd: release, env, stdio: "pipe" }), /forbidden paths/);
   } finally {
     await rm(directory, { recursive: true, force: true });

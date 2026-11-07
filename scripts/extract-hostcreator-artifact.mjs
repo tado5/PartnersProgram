@@ -11,6 +11,7 @@ const expected = new Map([
   ["runtime.tar.gz", maximumSize],
   ["commit.txt", 128],
   ["SHA256SUMS", 256],
+  ["source-manifest.json", 4 * 1024 * 1024],
 ]);
 let end = -1;
 for (let offset = zip.length - 22; offset >= Math.max(0, zip.length - 65557); offset--) {
@@ -21,8 +22,8 @@ for (let offset = zip.length - 22; offset >= Math.max(0, zip.length - 65557); of
 }
 if (end < 0) throw new Error("Invalid ZIP end record.");
 if (zip.readUInt16LE(end + 4) !== 0 || zip.readUInt16LE(end + 6) !== 0
-  || zip.readUInt16LE(end + 8) !== 3 || zip.readUInt16LE(end + 10) !== 3) {
-  throw new Error("Expected a single-volume ZIP with exactly three runtime files.");
+  || zip.readUInt16LE(end + 8) !== 4 || zip.readUInt16LE(end + 10) !== 4) {
+  throw new Error("Expected a single-volume ZIP with exactly four runtime files.");
 }
 const centralSize = zip.readUInt32LE(end + 12);
 let cursor = zip.readUInt32LE(end + 16);
@@ -33,7 +34,7 @@ const crcTable = Array.from({ length: 256 }, (_, value) => {
   for (let bit = 0; bit < 8; bit++) value = (value >>> 1) ^ ((value & 1) ? 0xedb88320 : 0);
   return value >>> 0;
 });
-for (let index = 0; index < 3; index++) {
+for (let index = 0; index < 4; index++) {
   if (cursor + 46 > centralEnd || zip.readUInt32LE(cursor) !== 0x02014b50) {
     throw new Error("Invalid ZIP central entry.");
   }

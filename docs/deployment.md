@@ -175,8 +175,9 @@ Presné výsledky a otvorené podmienky sú v
 ## 8a. HostCreators: hotový balík z GitHub Actions
 
 Táto alternatíva nepotrebuje Docker ani build na hostingu. Iba push do `main` vytvorí
-artefakt `hostcreator-standalone-<commit>` s `runtime.tar.gz`, `commit.txt`
-a `SHA256SUMS`. Obsahuje iba standalone runtime vrátane statických súborov;
+artefakt `hostcreator-standalone-<commit>` s `runtime.tar.gz`, `commit.txt`,
+`SHA256SUMS` a `source-manifest.json`. Obsahuje standalone runtime vrátane statických súborov
+a manifest ciest a SHA-256 súčtov sledovaných zdrojových súborov;
 `.env` súbory sú vylúčené. Build používa Linux x64 Ubuntu 24.04 a Node.js 24,
 s produkčným `APP_BASE_URL=https://partners.europodlahy.sk` a syntetickými
 CI tajomstvami. Artefakt sa uchováva 7 dní. Pred prvým publikovaním overte
@@ -201,11 +202,22 @@ poľa, Gitu ani `.env` aplikácie. Overte, že ho HostCreators bezpečne uchová
 a maskuje v logoch; obmedzte prístup k administrácii a pravidelne ho rotujte.
 Skript neposiela token na úložisko so signed download URL a nevypisuje ho.
 ZIP obálku artefaktu rozbaľuje priamo Node.js; hosting nepotrebuje `unzip`
-ani inštaláciu npm balíčkov. Akceptuje iba tri očakávané súbory, overuje
+ani inštaláciu npm balíčkov. Akceptuje iba štyri očakávané súbory, overuje
 ZIP CRC a následne SHA-256 runtime archívu. Limit ZIP je 256 MiB.
+V Bash kroku použite `set +x`, `set -e` a `export HOSTCREATOR_GITHUB_TOKEN`
+pred volaním skriptu, aby token zdedil Node.js proces. Premennú pridajte
+samostatným riadkom názov/hodnota vo WebAdmine; nestačí zápis do `.env`.
 
 Skript čaká najviac 25 minút na úspešné dokončenie **celého push CI na `main`**
-pre presný commit klonovaný hostingom, teda aj acceptance a audit jobov.
+vrátane acceptance a audit jobov. Vyberie najnovší push beh na `main`
+a počas čakania už nemení vybraný run ani commit.
+Hosting nepotrebuje `.git`: po stiahnutí overí commit balíka oproti vybranému
+CI behu a všetky súbory zdrojového manifestu oproti checkoutu na hostingu.
+Odmietne zmenené/chýbajúce súbory, symlinky a dodatočné súbory v zdrojových
+stromoch `src`, `prisma`, `scripts`, `public` a `tests`. Produkčné `.env`
+nie sú zdrojom; `.env.example` sa overuje. Pri súbežných pushoch alebo
+manuálnom deployi staršieho checkoutu môže manifest nesedieť: deploy sa
+zastaví a treba ho zopakovať pre aktuálny `main`, nie ručne obísť kontrolu.
 Zlyhanie, timeout, chýbajúci/expirujúci artefakt alebo neplatný balík zastavia
 deploy. Workflow pre pull request ani samotný workflow_dispatch artefakt
 nevytvárajú. Pôvodný push webhook môže zostať zapnutý; Bash čaká na CI,
