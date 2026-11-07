@@ -163,6 +163,8 @@ CI používa `npm ci --include=dev` aj pri `NODE_ENV=production`, aby nechýbal
 Prisma CLI, TypeScript, ESLint a testovacie nástroje.
 Pred typecheckom a unit testami CI explicitne generuje Prisma klienta cez
 `npm run db:generate`; čistý runner nemá klienta z predchádzajúceho buildu.
+`npm run typecheck` najprv spúšťa `next typegen`, aby aj čistý checkout
+mal globálne Next.js typy `LayoutProps` a `PageProps` bez predchádzajúceho buildu.
 Audit gate odmieta
 HIGH/CRITICAL nálezy; aktuálny production-only audit má 0 nálezov, celý strom
 obsahuje 16 MODERATE záznamov vo vývojovom lint nástroji (`minimatch`).
