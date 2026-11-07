@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { hash } from "@node-rs/argon2";
-import { chromium, type BrowserContext, type Page } from "playwright";
+import { chromium, type BrowserContext, type Locator, type Page } from "playwright";
 import sharp from "sharp";
 
 import { prisma } from "../src/server/db";
@@ -19,6 +19,16 @@ import { getManualArticles } from "../src/lib/manual";
 
 const base = "http://127.0.0.1:3017";
 const origin = "https://partners.example.invalid";
+async function assertFocused(page: Page, locator: Locator) {
+  const element = await locator.elementHandle();
+  assert.ok(element, "Expected focus target must exist.");
+  try {
+    await page.waitForFunction((target) => document.activeElement === target, element, { timeout: 5_000 });
+    assert.equal(await locator.evaluate((target) => document.activeElement === target), true);
+  } finally {
+    await element.dispose();
+  }
+}
 declare global {
   interface Window {
     acceptanceMetrics?: { layoutShiftSum: number; largestContentfulPaintMs: number; longTasks: number };
@@ -722,7 +732,7 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
       await dialog.waitFor();
       assert.equal(await dialog.locator("figure img").nth(1).getAttribute("src"), qrBefore,
         "activating NFC must not replace the QR used for printed artwork");
-      assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "Zavrieť");
+      await assertFocused(page, dialog.getByRole("button", { name: "Zavrieť", exact: true }));
       await dialog.getByText("Použiť aj ako NFC kartu", { exact: true }).click();
       const nfcUrl = await dialog.getByLabel("URL na zápis NFC", { exact: true }).inputValue();
       assert.notEqual(nfcUrl, await dialog.getByRole("link", { name: "Otvoriť verejnú kartu", exact: true }).getAttribute("href"));
@@ -731,11 +741,10 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
         (element as HTMLButtonElement).focus();
       });
       await page.keyboard.press("Tab");
-      assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "Zavrieť");
+      await assertFocused(page, dialog.getByRole("button", { name: "Zavrieť", exact: true }));
       await page.keyboard.press("Escape");
       await dialog.waitFor({ state: "detached" });
-      assert.equal(await open.evaluate((element) => document.activeElement === element), true,
-        "closing the dialog should focus the newly created access action");
+      await assertFocused(page, open);
       assert.equal(await page.locator('input[name="label"]').count(), 0);
       const count = await prisma.partnerToken.count({ where: { partnerId: partner.id } });
       await page.reload();
