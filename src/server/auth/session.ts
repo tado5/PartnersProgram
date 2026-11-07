@@ -1,5 +1,4 @@
 import { auth } from "@/auth";
-import { env } from "@/lib/env";
 import type { Session } from "next-auth";
 import type { Company, Prisma, User } from "@prisma/client";
 import { NextResponse } from "next/server";
@@ -8,6 +7,7 @@ import { redirect } from "next/navigation";
 
 import { prisma } from "../db";
 import { companyCookieName, readCompanySelection } from "./company-cookie";
+import { sessionLimits } from "./session-policy";
 
 export type AuthContext = {
   session: Session;
@@ -29,18 +29,11 @@ export async function getAuthenticatedUser(): Promise<AuthContext | null> {
   }
 
   const now = Date.now();
-  const idleMinutes =
-    sessionUser.role !== "seller"
-      ? env.SESSION_ADMIN_IDLE_MINUTES
-      : env.SESSION_SELLER_IDLE_MINUTES;
-  const maximumHours =
-    sessionUser.role !== "seller"
-      ? env.SESSION_ADMIN_MAX_HOURS
-      : env.SESSION_SELLER_MAX_HOURS;
+  const limits = sessionLimits(sessionUser.role, sessionUser.rememberLogin === true);
 
   if (
-    now - sessionUser.lastActivityAt > idleMinutes * 60_000 ||
-    now - sessionUser.loginAt > maximumHours * 3_600_000
+    now - sessionUser.lastActivityAt > limits.idleMs ||
+    now - sessionUser.loginAt > limits.maximumMs
   ) {
     return null;
   }

@@ -5,6 +5,16 @@ const nextConfig: NextConfig = {
   output: "standalone",
   cacheComponents: true,
   partialPrefetching: true,
+  async headers() {
+    return [{
+      source: "/sw.js",
+      headers: [
+        { key: "Cache-Control", value: "no-store, max-age=0" },
+        { key: "Content-Type", value: "application/javascript; charset=utf-8" },
+        { key: "X-Content-Type-Options", value: "nosniff" },
+      ],
+    }];
+  },
   // Keep the dev badge away from the sidebar footer (logout button).
   devIndicators: { position: "bottom-right" },
   // pdfkit reads its data files from disk; the report PDF embeds DejaVu fonts (Slovak diacritics).

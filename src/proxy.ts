@@ -90,6 +90,7 @@ function pageResponse(request: NextRequest) {
     "img-src 'self' blob: data:",
     "font-src 'self' data:",
     "connect-src 'self'",
+    "worker-src 'self'",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",

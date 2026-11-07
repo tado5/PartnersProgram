@@ -8,8 +8,37 @@ import test from "node:test";
 import { createSourceManifest, verifySourceManifest } from "../scripts/hostcreator-source-manifest.mjs";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { runInNewContext } from "node:vm";
 
 const sha = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+
+test("online PWA worker does not intercept API or cache data and preserves HTTP errors", async () => {
+  const handlers = new Map();
+  let online = true;
+  const options = [];
+  runInNewContext(await readFile(new URL("../public/sw.js", import.meta.url), "utf8"), {
+    self: { addEventListener: (type, handler) => handlers.set(type, handler) },
+    Response,
+    fetch: async (_request, init) => {
+      options.push(init);
+      if (!online) throw new Error("Offline");
+      return new Response("Original server error", { status: 500 });
+    },
+  });
+  let response;
+  const respondWith = promise => { response = promise; };
+  handlers.get("fetch")({ request: { mode: "cors", method: "POST" }, respondWith });
+  assert.equal(response, undefined, "API writes must not be intercepted");
+  handlers.get("fetch")({ request: { mode: "navigate", method: "GET" }, respondWith });
+  assert.equal((await response).status, 500, "HTTP server errors must not become offline successes");
+  assert.equal(options[0].cache, "no-store");
+  online = false;
+  handlers.get("fetch")({ request: { mode: "navigate", method: "GET" }, respondWith });
+  const offline = await response;
+  assert.equal(offline.status, 503);
+  assert.equal(offline.headers.get("cache-control"), "no-store");
+  assert.match(await offline.text(), /Nie ste pripojení na internet/);
+});
 
 test("Alpine native packaging includes locked binaries and rejects mismatched versions", async () => {
   const root = await mkdtemp(join(tmpdir(), "partners-native-test-"));

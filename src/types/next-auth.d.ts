@@ -12,6 +12,7 @@ declare module "next-auth" {
       loginAt: number;
       lastActivityAt: number;
       isSessionValid: boolean;
+      rememberLogin?: boolean;
     } & DefaultSession["user"];
   }
 
@@ -20,6 +21,7 @@ declare module "next-auth" {
     companyId: string | null;
     mustChangePassword: boolean;
     passwordChangedAt: number;
+    rememberLogin?: boolean;
   }
 }
 
@@ -34,5 +36,6 @@ declare module "@auth/core/jwt" {
     loginAt?: number;
     lastActivityAt?: number;
     isSessionValid?: boolean;
+    rememberLogin?: boolean;
   }
 }
