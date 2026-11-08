@@ -50,6 +50,7 @@ export default async function NewPurchasePage({
       </p>
       <div className="mt-6">
         <PurchaseForm
+          key={`${partner.id}:${source}:${tokenId ?? ""}`}
           partner={{
             id: partner.id.toString(), code: partner.code, displayName: partner.displayName,
             totalPoints: totals._sum.points ?? 0,

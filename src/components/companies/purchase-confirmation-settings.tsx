@@ -31,6 +31,11 @@ export function PurchaseConfirmationSettings({
   const [saved, setSaved] = useState(false);
   const [pending, setPending] = useState(false);
 
+  function changed() {
+    setSaved(false);
+    setError("");
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setPending(true);
@@ -86,7 +91,7 @@ export function PurchaseConfirmationSettings({
           inputMode="decimal"
           required
           value={vatRate}
-          onChange={(event) => setVatRate(event.target.value)}
+          onChange={(event) => { changed(); setVatRate(event.target.value); }}
         />
         <p className="mt-2 text-sm text-stone-600">
           Predvolená sadzba je 23 %. Nové nákupy používajú túto sadzbu; uložené nákupy si zachovajú svoju sadzbu a suma bez DPH.
@@ -106,7 +111,7 @@ export function PurchaseConfirmationSettings({
           step="0.01"
           inputMode="decimal"
           value={limit}
-          onChange={(event) => setLimit(event.target.value)}
+          onChange={(event) => { changed(); setLimit(event.target.value); }}
           placeholder="Bez limitu"
         />
         <p className="mt-2 text-sm text-stone-600">
@@ -136,7 +141,7 @@ export function PurchaseConfirmationSettings({
               inputMode="decimal"
               name={`${tier}MonthlyTurnoverEur`}
               value={thresholds[tier]}
-              onChange={(event) => setThresholds((current) => ({ ...current, [tier]: event.target.value }))}
+              onChange={(event) => { changed(); setThresholds((current) => ({ ...current, [tier]: event.target.value })); }}
               placeholder="Vypnuté"
             />
           </label>

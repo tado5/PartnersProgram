@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 
 import { refreshPartnerViews } from "@/app/app/partneri/actions";
 import { useCompanyApi } from "@/components/company-context";
@@ -43,46 +43,56 @@ export function PartnerForm({
   const [duplicates, setDuplicates] = useState<Duplicate[]>([]);
   const [pendingPayload, setPendingPayload] = useState<Record<string, unknown> | null>(null);
   const [pending, setPending] = useState(false);
+  const submittedForm = useRef<HTMLFormElement | null>(null);
 
   async function save(payload: Record<string, unknown>, confirmDuplicates = false) {
+    if (pending) return;
     setPending(true);
     setError("");
     if (!confirmDuplicates) {
       setDuplicates([]);
       setPendingPayload(null);
     }
-    const response = await companyFetch(
-      partner ? `/api/partners/${partner.id}` : "/api/partners",
-      {
-        method: partner ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...payload, ...(confirmDuplicates ? { confirmDuplicates: true } : {}) }),
-      },
-    );
-    const body = (await response.json()) as ApiResponse & {
-      partner?: { id: string };
-    };
-    if (!response.ok) {
-      if (body.error?.code === "DUPLICATE_WARNING" && body.error.matches) {
-        setDuplicates(body.error.matches);
-        setPendingPayload(payload);
-      } else {
-        setError(formatApiError(body.error, "Partnera sa nepodarilo uložiť."));
+    try {
+      const response = await companyFetch(
+        partner ? `/api/partners/${partner.id}` : "/api/partners",
+        {
+          method: partner ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...payload, ...(confirmDuplicates ? { confirmDuplicates: true } : {}) }),
+        },
+      );
+      const body = (await response.json()) as ApiResponse & {
+        partner?: { id: string };
+      };
+      if (!response.ok) {
+        if (body.error?.code === "DUPLICATE_WARNING" && body.error.matches) {
+          setDuplicates(body.error.matches);
+          setPendingPayload(payload);
+        } else {
+          setError(formatApiError(body.error, "Partnera sa nepodarilo uložiť."));
+        }
+        return;
       }
+      const refresh = await refreshPartnerViews(companyId, selectionId);
+      if (refresh.error) {
+        setError(`Partner bol uložený. ${refresh.error}`);
+        return;
+      }
+      if (!partner) submittedForm.current?.reset();
+      setDuplicates([]);
+      setPendingPayload(null);
+      router.push(`/app/partneri/${body.partner?.id ?? partner?.id}`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Požiadavku sa nepodarilo dokončiť. Skontrolujte pripojenie.");
+    } finally {
       setPending(false);
-      return;
     }
-    const refresh = await refreshPartnerViews(companyId, selectionId);
-    if (refresh.error) {
-      setError(refresh.error);
-      setPending(false);
-      return;
-    }
-    router.push(`/app/partneri/${body.partner?.id ?? partner?.id}`);
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    submittedForm.current = event.currentTarget;
     const data = new FormData(event.currentTarget);
     const payload: Record<string, unknown> = Object.fromEntries(data.entries());
     if (!partner && privacyNotice) {

@@ -54,6 +54,28 @@ idempotency kľúč; opakovanie nedokončenej požiadavky naďalej nevytvára du
 Potvrdenie zobrazuje súčet zachytený pri uložení, nie opätovne pripočítaný
 predchádzajúci nákup k neskôr obnoveným údajom partnera.
 
+### Checklist regresií navigácie a kamery
+
+- [x] Dokončený nákup sa neobnoví pri návrate cez bočné menu.
+- [x] Zrušený nákup ani výber iného partnera neprenesie sumu, poznámku alebo potvrdenie.
+- [x] Skener po overení karty a návrate z formulára umožní nové QR/NFC čítanie.
+- [x] Opätovne otvorená úprava partnera nezostane v stave „Ukladám…“.
+- [x] Návrat do používateľov načíta aktuálny zoznam vrátane zmien vykonaných inde.
+- [x] Zmena DPH, limitu alebo ocenení odstráni neaktuálne hlásenie o uložení.
+- [x] Kamera zvládne dlhšie čítanie, prerušený stream, pozadie, oneskorené povolenie
+  a opakované zapnutie bez obnovenia stránky.
+- [x] Verejná QR/NFC karta aj jej chybové stránky majú funkčný mobilný dizajn
+  pri zapnutej Content Security Policy.
+
+Automatizované overenie používa izolovanú databázu, mobilný aj desktopový prehliadač,
+65 sekúnd živého kamerového streamu, simulované výpadky a skutočné dekódovanie QR
+zo streamu. NFC je simulované; nejde o overenie fyzického zariadenia.
+
+Kamera pri odchode zo skenera alebo do pozadia uvoľní stream. Ukončený stream
+alebo obraz bez nových snímok aspoň 15 sekúnd oznámi ako prerušenie a ponúkne
+opätovné zapnutie. Tmavý obraz s plynulými snímkami nie je chyba.
+Fyzické kamery a NFC na konkrétnych telefónoch vyžadujú aj manuálnu kontrolu.
+
 ### 1.2 Partner – kontrola bodov
 ```
 Partner naskenuje QR / priloží NFC svojím telefónom → /k/{token} → karta iba na čítanie

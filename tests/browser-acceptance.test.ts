@@ -11,6 +11,7 @@ import { test } from "node:test";
 import { hash } from "@node-rs/argon2";
 import { chromium, type BrowserContext, type Locator, type Page } from "playwright";
 import sharp from "sharp";
+import QRCode from "qrcode";
 
 import { prisma } from "../src/server/db";
 import { companyCookieName } from "../src/server/auth/company-cookie";
@@ -1242,6 +1243,255 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
       });
     }
 
+    await t.test("navigation resets completed purchases, cancelled partner drafts and saved partner editors", async () => {
+      const first = await prisma.partner.create({ data: {
+        companyId: company.id, code: "EP-BCD23", type: "installer",
+        displayName: "Navigation First Partner", createdByUserId: admin.id,
+      } });
+      const secondPartner = await prisma.partner.create({ data: {
+        companyId: company.id, code: "EP-BCD24", type: "installer",
+        displayName: "Navigation Second Partner", createdByUserId: admin.id,
+      } });
+      const page = await session(admin.email);
+      const menu = page.getByRole("navigation", { name: "Hlavné menu" });
+      const pick = async (name: string) => {
+        await page.getByRole("link", { name: /Partner nemá kartu/ }).click();
+        await page.getByLabel("Vyhľadať partnera", { exact: true }).fill(name);
+        await page.getByRole("link", { name: new RegExp(name) }).click();
+        await page.getByRole("heading", { name, exact: true }).waitFor();
+        await page.getByLabel("Suma nákupu s DPH", { exact: false }).waitFor();
+      };
+      await page.goto(`${origin}/app/sken`);
+      await pick(first.displayName);
+      await page.getByLabel("Suma nákupu s DPH", { exact: false }).fill("24.60");
+      await page.getByLabel("Interná poznámka", { exact: false }).fill("Cancelled draft");
+      await page.getByRole("link", { name: "Zrušiť", exact: true }).click();
+      await pick(secondPartner.displayName);
+      assert.equal(await page.getByLabel("Suma nákupu s DPH", { exact: false }).inputValue(), "");
+      assert.equal(await page.getByLabel("Interná poznámka", { exact: false }).inputValue(), "");
+      await page.getByLabel("Suma nákupu s DPH", { exact: false }).fill("24.60");
+      await page.getByRole("button", { name: "Uložiť nákup", exact: true }).click();
+      await page.getByRole("heading", { name: "Nákup bol uložený", exact: true }).waitFor();
+      await menu.getByRole("link", { name: "Skenovať", exact: true }).click();
+      await pick(secondPartner.displayName);
+      assert.equal(await page.getByLabel("Suma nákupu s DPH", { exact: false }).inputValue(), "");
+      assert.equal(await page.getByRole("heading", { name: "Nákup bol uložený", exact: true }).isVisible(), false);
+      await page.getByLabel("Suma nákupu s DPH", { exact: false }).fill("24.60");
+      await page.getByRole("button", { name: "Uložiť nákup", exact: true }).click();
+      await page.getByRole("heading", { name: "Nákup bol uložený", exact: true }).waitFor();
+      assert.match(await page.locator("main").innerText(), /Nový súčet partnera: 40 bodov/);
+      assert.equal(await prisma.purchase.count({ where: { partnerId: secondPartner.id } }), 2);
+      assert.equal(await prisma.purchase.count({ where: { partnerId: first.id } }), 0);
+
+      await page.goto(`${origin}/app/partneri/${first.id}`);
+      for (const name of ["Navigation First Updated", "Navigation First Updated Again"]) {
+        await page.getByRole("link", { name: "Upraviť údaje", exact: true }).click();
+        await page.getByLabel("Zobrazované meno", { exact: false }).waitFor();
+        const save = page.getByRole("button", { name: "Uložiť zmeny", exact: true });
+        assert.equal(await save.isEnabled(), true);
+        await page.getByLabel("Zobrazované meno", { exact: false }).fill(name);
+        await save.click();
+        await page.waitForURL(`${origin}/app/partneri/${first.id}`);
+        await page.getByRole("heading", { name, exact: true }).waitFor();
+      }
+      assert.equal((await prisma.partner.findUniqueOrThrow({ where: { id: first.id } })).displayName, "Navigation First Updated Again");
+    });
+
+    await t.test("restored users reload external changes and dirty settings never claim to be saved", async () => {
+      const page = await session(admin.email);
+      const menu = page.getByRole("navigation", { name: "Hlavné menu" });
+      await menu.getByRole("link", { name: "Používatelia", exact: true }).click();
+      await page.getByRole("heading", { name: "Používateľské účty", exact: true }).waitFor();
+      const added = await prisma.user.create({ data: {
+        companyId: company.id, email: `navigation-new-${suffix}@example.test`, name: "Navigation Added User",
+        role: "seller", passwordHash, mustChangePassword: false,
+      } });
+      await menu.getByRole("link", { name: "Prehľad", exact: true }).click();
+      await page.waitForURL(`${origin}/app`);
+      await menu.getByRole("link", { name: "Používatelia", exact: true }).click();
+      await page.getByRole("heading", { name: added.name, exact: true }).waitFor();
+      await menu.getByRole("link", { name: "Nastavenia", exact: true }).click();
+      const save = page.getByRole("button", { name: "Uložiť nastavenie", exact: true });
+      const status = page.getByRole("status").filter({ hasText: "Nastavenie je uložené." });
+      for (const [label, value] of [
+        ["Sadzba DPH firmy (%)", "20"],
+        ["Potvrdenie pri nákupe od (€)", "100"],
+        ["Bronzový partner od (€)", "100"],
+      ]) {
+        await save.click();
+        await status.waitFor();
+        const field = page.getByLabel(label, { exact: true });
+        const original = await field.inputValue();
+        await field.fill(value);
+        assert.equal(await status.isVisible(), false);
+        await field.fill(original);
+      }
+      assert.equal((await prisma.company.findUniqueOrThrow({ where: { id: company.id } })).vatRatePercent.toFixed(2), "23.00");
+    });
+
+    await t.test("QR camera survives extended scanning, interruption, background and late permission without refresh", { timeout: 150_000 }, async () => {
+      const page = await session(admin.email);
+      await page.context().addInitScript({ content: `
+        window.cameraStreams = [];
+        window.cameraPending = [];
+        window.cameraMode = "normal";
+        window.cameraImage = null;
+        window.makeCameraStream = () => {
+          const canvas = document.createElement("canvas");
+          canvas.width = canvas.height = 400;
+          const context = canvas.getContext("2d");
+          const draw = () => {
+            context.fillStyle = "black";
+            context.fillRect(0, 0, 400, 400);
+            if (window.cameraImage) context.drawImage(window.cameraImage, 0, 0, 400, 400);
+          };
+          draw();
+          const stream = canvas.captureStream(15);
+          const interval = setInterval(draw, 50);
+          stream.getVideoTracks()[0].addEventListener("ended", () => clearInterval(interval));
+          window.cameraStreams.push(stream);
+          return stream;
+        };
+        Object.defineProperty(navigator.mediaDevices, "getUserMedia", { configurable: true, value: () => {
+          if (window.cameraMode === "denied") return Promise.reject(new DOMException("Denied", "NotAllowedError"));
+          if (window.cameraMode === "pending") return new Promise(resolve => window.cameraPending.push(resolve));
+          return Promise.resolve(window.makeCameraStream());
+        } });
+      ` });
+      await page.goto(`${origin}/app/sken`);
+      const start = page.getByRole("button", { name: "Zapnúť kameru", exact: true });
+      const stop = page.getByRole("button", { name: "Zastaviť kameru", exact: true });
+      const video = page.getByLabel("Náhľad kamery pri skenovaní QR kódu", { exact: true });
+      await start.click();
+      await stop.waitFor();
+      const initialTime = await video.evaluate(element => (element as HTMLVideoElement).currentTime);
+      await page.waitForTimeout(65_000);
+      assert.equal(await stop.isVisible(), true, "Dark but live video must not be treated as failed");
+      assert.ok(await video.evaluate(element => (element as HTMLVideoElement).currentTime) > initialTime + 60);
+      await page.evaluate(`window.cameraStreams.at(-1).getVideoTracks()[0].dispatchEvent(new Event("ended"))`);
+      await start.waitFor();
+      assert.equal(await start.isEnabled(), true);
+      assert.equal(await video.evaluate(element => (element as HTMLVideoElement).srcObject), null);
+      await start.click();
+      await stop.waitFor();
+      await video.evaluate(element => (element as HTMLVideoElement).pause());
+      await start.waitFor({ timeout: 22_000 });
+      await page.getByText(/Kamera prestala poskytovať obraz/).waitFor();
+      await start.click();
+      await stop.waitFor();
+      await page.evaluate(`Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" }); document.dispatchEvent(new Event("visibilitychange"));`);
+      await start.waitFor();
+      await page.evaluate(`delete document.visibilityState;`);
+      await start.click();
+      await stop.waitFor();
+      await stop.click();
+      await page.evaluate(`window.cameraMode = "denied";`);
+      await start.click();
+      await page.getByText(/Kameru sa nepodarilo spustiť/).waitFor();
+      assert.equal(await start.isEnabled(), true);
+      await page.evaluate(`window.cameraMode = "pending";`);
+      await start.click();
+      await page.getByRole("button", { name: "Spúšťam kameru…", exact: true }).waitFor();
+      const menu = page.getByRole("navigation", { name: "Hlavné menu" });
+      await menu.getByRole("link", { name: "Prehľad", exact: true }).click();
+      await page.waitForURL(`${origin}/app`);
+      await menu.getByRole("link", { name: "Skenovať", exact: true }).click();
+      await start.click();
+      await page.evaluate(`window.cameraPending[1](window.makeCameraStream());`);
+      await stop.waitFor();
+      await page.evaluate(`window.cameraPending[0](window.makeCameraStream());`);
+      await page.waitForFunction(`window.cameraStreams.at(-1).getVideoTracks()[0].readyState === "ended"`);
+      assert.equal(await video.evaluate(element => {
+        const stream = (element as HTMLVideoElement).srcObject;
+        return stream instanceof MediaStream && stream.active;
+      }), true);
+      await stop.click();
+      await page.evaluate(`window.cameraMode = "normal";`);
+      await start.click();
+      await stop.waitFor();
+      const qr = await QRCode.toDataURL(`${origin}/k/${cardToken}`, { width: 400, margin: 4 });
+      await page.evaluate(`new Promise(resolve => {
+        const image = new Image();
+        image.onload = () => { window.cameraImage = image; resolve(); };
+        image.src = ${JSON.stringify(qr)};
+      })`);
+      await page.waitForURL(url => url.pathname === "/app/nakupy/novy");
+      await page.getByRole("link", { name: "Zrušiť", exact: true }).click();
+      await start.waitFor();
+      assert.equal(await start.isEnabled(), true);
+      assert.equal(await page.getByText("Overujem kartu partnera…", { exact: true }).isVisible(), false);
+      await page.evaluate(`window.cameraImage = null;`);
+      await start.click();
+      await stop.waitFor();
+      await stop.click();
+      assert.equal(await page.evaluate(`window.cameraStreams.every(stream => stream.getTracks().every(track => track.readyState === "ended"))`), true);
+    });
+
+    await t.test("NFC scanner resets after success, cancel and interrupted resolution", async () => {
+      const sample = await prisma.partner.create({ data: {
+        companyId: company.id, code: "EP-NFC23", type: "installer",
+        displayName: "NFC navigation partner", createdByUserId: admin.id,
+      } });
+      const value = randomBytes(32).toString("base64url");
+      const tokenHash = createHash("sha256").update(value).digest("hex");
+      await prisma.partnerToken.create({ data: {
+        companyId: company.id, partnerId: sample.id, type: "nfc", tokenHash,
+        tokenEncrypted: encryptToken(value, { companyId: company.id, partnerId: sample.id, type: "nfc", tokenHash }, process.env.TOKEN_ENCRYPTION_KEY),
+        tokenHint: value.slice(0, 6), createdByUserId: admin.id,
+      } });
+      const page = await session(admin.email);
+      await page.context().addInitScript({ content: `
+        window.nfcSessions = [];
+        window.NDEFReader = class extends EventTarget {
+          async scan({ signal }) {
+            window.nfcSessions.push(signal);
+            window.addEventListener("navigation-nfc", () => {
+              if (signal.aborted) return;
+              const bytes = new TextEncoder().encode(${JSON.stringify(value)});
+              this.dispatchEvent(Object.assign(new Event("reading"), { message: { records: [
+                { recordType: "url", data: new DataView(bytes.buffer) }
+              ] } }));
+            });
+          }
+        };
+      ` });
+      await page.goto(`${origin}/app/sken`);
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const read = page.getByRole("button", { name: "Načítať NFC", exact: true });
+        await read.click();
+        await page.getByRole("button", { name: "Čakám na NFC kartu…", exact: true }).waitFor();
+        await page.evaluate(() => window.dispatchEvent(new Event("navigation-nfc")));
+        await page.waitForURL(url => url.pathname === "/app/nakupy/novy");
+        await page.getByRole("link", { name: "Zrušiť", exact: true }).click();
+        await page.waitForURL(`${origin}/app/sken`);
+        await page.getByRole("heading", { name: "Vyberte partnera", exact: true }).waitFor();
+        assert.equal(await page.getByText("Overujem kartu partnera…", { exact: true }).isVisible(), false);
+      }
+      let release!: () => void;
+      const gate = new Promise<void>(resolve => { release = resolve; });
+      await page.route("**/api/scan/resolve", async route => {
+        await gate;
+        if (!route.request().failure()) await route.abort();
+      });
+      const menu = page.getByRole("navigation", { name: "Hlavné menu" });
+      try {
+        await page.getByRole("button", { name: "Načítať NFC", exact: true }).click();
+        await page.getByRole("button", { name: "Čakám na NFC kartu…", exact: true }).waitFor();
+        await page.waitForFunction(`window.nfcSessions.length > 0 && !window.nfcSessions.at(-1).aborted`);
+        const pending = page.waitForRequest("**/api/scan/resolve", { timeout: 10_000 });
+        await page.evaluate(() => window.dispatchEvent(new Event("navigation-nfc")));
+        await pending;
+        await page.getByText("Overujem kartu partnera…", { exact: true }).waitFor();
+        await menu.getByRole("link", { name: "Prehľad", exact: true }).click();
+        await page.waitForURL(`${origin}/app`);
+      } finally { release(); }
+      await page.unrouteAll({ behavior: "wait" });
+      await menu.getByRole("link", { name: "Skenovať", exact: true }).click();
+      await page.getByRole("button", { name: "Načítať NFC", exact: true }).click();
+      await page.getByRole("button", { name: "Čakám na NFC kartu…", exact: true }).waitFor();
+      assert.equal(await page.getByText("Overujem kartu partnera…", { exact: true }).isVisible(), false);
+    });
+
     await t.test("repeat manual purchase for the same partner starts a fresh form and never replays the previous purchase", async () => {
       const sample = await prisma.partner.create({ data: {
         companyId: company.id, code: "EP-RPT23", type: "installer",
@@ -1295,12 +1545,27 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
       assert.match(await page.locator("main").innerText(), /16 bodov/);
       assert.equal(await prisma.purchase.count({ where: { companyId: company.id, createdByUserId: seller.id } }), 1);
       await noOverflow(page);
-      await page.goto(`${origin}/k/${cardToken}`);
+      const publicResponse = await page.goto(`${origin}/k/${cardToken}`);
+      assert.ok(publicResponse);
+      const csp = publicResponse.headers()["content-security-policy"];
+      const nonce = await page.locator("style").evaluate(element => (element as HTMLStyleElement).nonce);
+      assert.ok(nonce);
+      assert.ok(csp.includes(`'nonce-${nonce}'`));
       await page.getByText("Browser Alpha Partner", { exact: true }).waitFor();
+      assert.equal(await page.locator("main").evaluate(element => getComputedStyle(element).display), "grid");
+      assert.equal(await page.locator(".summary").first().evaluate(element => getComputedStyle(element).borderTopLeftRadius), "14.4px");
+      assert.notEqual(await page.locator("body").evaluate(element => getComputedStyle(element).backgroundImage), "none");
       const card = await page.locator("body").innerText();
       assert.match(card, /36/);
       assert.doesNotMatch(card, /PRIVATE_BROWSER_NOTE|Browser Alpha Admin|Browser Seller|Browser Beta Secret/);
       await noOverflow(page);
+      for (const [path, status] of [[`/k/${cardToken}?page=0`, 400], ["/k/invalid", 404]] as const) {
+        const response = await page.goto(`${origin}${path}`);
+        assert.equal(response?.status(), status);
+        assert.equal(await page.locator("main").evaluate(element => getComputedStyle(element).display), "grid");
+        assert.equal(await page.locator(".panel").evaluate(element => getComputedStyle(element).color), "rgb(255, 255, 255)");
+        await noOverflow(page);
+      }
     });
 
     if (process.env.ACCEPTANCE_EXPORTS === "1") {
@@ -1562,6 +1827,12 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
         assert.equal(receipt.reason, null);
         assert.ok(receipt.providedAt >= notice.publishedAt);
         assert.ok(receipt.providedAt <= new Date());
+        await page.getByRole("link", { name: /Späť na partnerov/ }).click();
+        await page.getByRole("link", { name: "Nový partner", exact: true }).click();
+        await page.getByLabel("Zobrazované meno", { exact: false }).waitFor();
+        assert.equal(await page.getByLabel("Zobrazované meno", { exact: false }).inputValue(), "");
+        assert.equal(await page.getByRole("button", { name: "Vytvoriť partnera", exact: true }).isEnabled(), true);
+        await page.goto(`${origin}/app/partneri/${registered.id}`);
         const history = page.locator("section").filter({
           has: page.getByRole("heading", { name: "Informovanie o spracúvaní údajov", exact: true }),
         }).last();

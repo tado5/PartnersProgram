@@ -7,28 +7,29 @@ import { escapeHtml } from "@/lib/html";
 type RouteContext = { params: Promise<{ token: string }> };
 
 export async function GET(request: Request, { params }: RouteContext) {
+  const nonce = escapeHtml(request.headers.get("x-nonce") ?? "");
   const { token } = await params;
-  if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return notFound();
+  if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return notFound(nonce);
 
   const queryPage = new URL(request.url).searchParams.get("page");
   const page = queryPage === null ? 1 : Number(queryPage);
   if (!Number.isInteger(page) || page < 1 || page > 10000) {
-    return new NextResponse(invalidPageHtml(), {
+    return new NextResponse(invalidPageHtml(nonce), {
       status: 400,
       headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
     });
   }
 
   const card = await getPublicCard(token, page);
-  if (!card) return notFound();
-  const html = publicCardHtml(card, token, page);
+  if (!card) return notFound(nonce);
+  const html = publicCardHtml(card, token, page, nonce);
   return new NextResponse(`<!doctype html>${html}`, {
     headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
   });
 }
 
-function notFound() {
-  return new NextResponse(notFoundHtml(), {
+function notFound(nonce: string) {
+  return new NextResponse(notFoundHtml(nonce), {
     status: 404,
     headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
   });
@@ -72,7 +73,7 @@ const styles = `
   @media (max-width: 35rem) { body { padding: 1rem .75rem; } .grid { gap: .5rem; } .summary { padding: .8rem; } .summary-value { font-size: 1.2rem; } .tiers { gap: .4rem; } .tier { padding: .6rem; } li { align-items: flex-start; flex-direction: column; gap: .25rem; } .right { text-align: left; } }
 `;
 
-function publicCardHtml(card: NonNullable<Awaited<ReturnType<typeof getPublicCard>>>, token: string, page: number) {
+function publicCardHtml(card: NonNullable<Awaited<ReturnType<typeof getPublicCard>>>, token: string, page: number, nonce: string) {
   const pageCount = Math.max(1, Math.ceil(card.purchases.total / card.purchases.pageSize));
   const badge = card.badge.tier
     ? `<p class="badge">${escapeHtml(card.badge.label ?? "")}</p>${card.badge.nextThreshold ? `<p class="next">Ďalšie ocenenie od ${currency(card.badge.nextThreshold)}</p>` : ""}`
@@ -92,7 +93,7 @@ function publicCardHtml(card: NonNullable<Awaited<ReturnType<typeof getPublicCar
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex, nofollow">
     <title>${escapeHtml(card.displayName)} · ${escapeHtml(card.companyName)}</title>
-    <style>${styles}</style>
+    <style nonce="${nonce}">${styles}</style>
   </head>
   <body>
     <main>
@@ -144,12 +145,12 @@ function tierCount(label: string, count: number) {
   return `<div class="tier"><span class="tier-label">${escapeHtml(label)}</span><span class="tier-count">${count} mes.</span></div>`;
 }
 
-function notFoundHtml() {
-  return `<!doctype html><html lang="sk"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex, nofollow"><title>Karta sa nenašla</title><style>${styles}</style></head><body><main><section class="panel"><h1>Karta sa nenašla</h1><p class="intro">Karta nie je dostupná.</p></section></main></body></html>`;
+function notFoundHtml(nonce: string) {
+  return `<!doctype html><html lang="sk"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex, nofollow"><title>Karta sa nenašla</title><style nonce="${nonce}">${styles}</style></head><body><main><section class="panel"><h1>Karta sa nenašla</h1><p class="intro">Karta nie je dostupná.</p></section></main></body></html>`;
 }
 
-function invalidPageHtml() {
-  return `<!doctype html><html lang="sk"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Neplatná stránka</title><style>${styles}</style></head><body><main><section class="panel"><h1>Neplatná stránka</h1><p class="intro">Požadovanú stránku nákupov nemožno zobraziť.</p></section></main></body></html>`;
+function invalidPageHtml(nonce: string) {
+  return `<!doctype html><html lang="sk"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Neplatná stránka</title><style nonce="${nonce}">${styles}</style></head><body><main><section class="panel"><h1>Neplatná stránka</h1><p class="intro">Požadovanú stránku nákupov nemožno zobraziť.</p></section></main></body></html>`;
 }
 
 function currency(amount: string) {

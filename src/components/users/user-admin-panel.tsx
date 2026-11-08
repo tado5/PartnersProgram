@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useCompanyApi } from "@/components/company-context";
 import { ActionLabel } from "@/components/action-label";
 import { ValidatedForm } from "@/components/validated-form";
@@ -189,16 +189,30 @@ export function UserAdminPanel({
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const loadUsers = useCallback(async () => {
-    const response = await companyFetch("/api/users", { cache: "no-store" });
+  const loadUsers = useCallback(async (signal?: AbortSignal) => {
+    const response = await companyFetch("/api/users", { cache: "no-store", signal });
+    if (signal?.aborted) return;
     if (!response.ok) {
       setError(await responseError(response));
       return;
     }
     const body = (await response.json()) as { users: ManagedUser[] };
+    if (signal?.aborted) return;
     setUsers(body.users);
     setError("");
   }, [companyFetch]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      void loadUsers(controller.signal).catch(() => {
+        if (!controller.signal.aborted) {
+          setError("Zoznam používateľov sa nepodarilo obnoviť. Skontrolujte pripojenie.");
+        }
+      });
+    }, 0);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [loadUsers]);
 
   async function createUser(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

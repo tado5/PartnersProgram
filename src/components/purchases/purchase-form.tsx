@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useRef, useState, type MouseEvent, type SubmitEvent } from "react";
+import { useLayoutEffect, useRef, useState, type MouseEvent, type SubmitEvent } from "react";
 
+import { refreshPurchaseViews } from "@/app/app/nakupy/actions";
 import { useCompanyApi } from "@/components/company-context";
 import { ValidatedForm } from "@/components/validated-form";
 import { dateTimeInputInZoneToIso } from "@/lib/dates";
@@ -30,8 +31,9 @@ export function PurchaseForm({
   confirmationLimit: string | null;
   vatRatePercent: string;
 }) {
-  const { companyFetch } = useCompanyApi();
+  const { companyFetch, companyId, selectionId } = useCompanyApi();
   const idempotencyKey = useRef<string | null>(null);
+  const completed = useRef(false);
   const [amount, setAmount] = useState("");
   const [partnerPresent, setPartnerPresent] = useState("yes");
   const [note, setNote] = useState("");
@@ -42,6 +44,23 @@ export function PurchaseForm({
   const [error, setError] = useState("");
   const [success, setSuccess] = useState<PurchaseSuccess | null>(null);
 
+  useLayoutEffect(() => () => {
+    if (!completed.current) return;
+    completed.current = false;
+    idempotencyKey.current = null;
+    setSuccess(null);
+    setAmount("");
+    setNote("");
+    setPartnerPresent("yes");
+    setPurchasedAt(new Intl.DateTimeFormat("sv-SE", {
+      timeZone: "Europe/Bratislava", year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+    }).format(new Date()).replace(" ", "T"));
+    setConfirmationRequired(false);
+    setConfirmedAmount(false);
+    setError("");
+  }, []);
+
   function changed() {
     idempotencyKey.current = null;
     setConfirmationRequired(false);
@@ -50,6 +69,7 @@ export function PurchaseForm({
   }
 
   async function save(highAmountConfirmed: boolean) {
+    if (pending || completed.current) return;
     const purchasedAtIso = dateTimeInputInZoneToIso(purchasedAt, "Europe/Bratislava");
     if (!purchasedAtIso) {
       setError("Zadaný dátum a čas nie je platný.");
@@ -80,7 +100,10 @@ export function PurchaseForm({
         return;
       }
       if (!response.ok) throw new Error(formatApiError(body.error, "Nákup sa nepodarilo uložiť."));
+      completed.current = true;
       setSuccess({ ...body.purchase, totalPoints: partner.totalPoints + body.purchase.points });
+      const refresh = await refreshPurchaseViews(companyId, selectionId);
+      if (refresh.error) setError(`Nákup bol uložený. ${refresh.error}`);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Požiadavku sa nepodarilo dokončiť.");
     } finally {
@@ -111,6 +134,7 @@ export function PurchaseForm({
         <p className="mt-3 text-sm text-emerald-900">
           Nový súčet partnera: <strong className="text-base font-bold">{success.totalPoints} bodov</strong>
         </p>
+        {error ? <p role="alert" className="mt-3 text-sm text-red-700">{error}</p> : null}
         <div className="mt-5 flex flex-wrap gap-3">
           <Link onClick={leaveCompletedPurchase} className={primaryButton} href="/app/sken">Skenovať ďalšieho</Link>
           <Link onClick={leaveCompletedPurchase} className={secondaryButton} href={`/app/nakupy/novy?partner=${encodeURIComponent(partner.id)}&source=${source}${tokenId ? `&tokenId=${encodeURIComponent(tokenId)}` : ""}`}>Ďalší nákup tohto partnera</Link>
@@ -203,7 +227,7 @@ export function PurchaseForm({
         <button className={primaryButton} type="submit" disabled={pending}>
           {pending ? "Ukladám…" : confirmationRequired ? "Potvrdiť a uložiť nákup" : "Uložiť nákup"}
         </button>
-        <Link className={secondaryButton} href="/app/sken">Zrušiť</Link>
+        <Link onClick={leaveCompletedPurchase} className={secondaryButton} href="/app/sken">Zrušiť</Link>
       </div>
     </ValidatedForm>
   );

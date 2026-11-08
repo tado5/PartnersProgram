@@ -1,14 +1,14 @@
 "use client";
 
-import { BrowserQRCodeReader } from "@zxing/browser";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronRight, Nfc, QrCode, UserSearch } from "lucide-react";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { useCompanyApi } from "@/components/company-context";
 import { ActionLabel } from "@/components/action-label";
 import { formatApiError } from "@/lib/validation-errors";
+import { useQrCamera } from "./use-qr-camera";
 
 type NdefRecord = { recordType: string; data: DataView };
 type NdefEvent = Event & { message: { records: NdefRecord[] } };
@@ -28,35 +28,53 @@ export function PurchaseScanner() {
   const router = useRouter();
   const { companyFetch } = useCompanyApi();
   const videoRef = useRef<HTMLVideoElement>(null);
-  const scannerRef = useRef<Awaited<ReturnType<BrowserQRCodeReader["decodeFromVideoDevice"]>> | null>(null);
   const nfcAbortRef = useRef<AbortController | null>(null);
+  const scanAbortRef = useRef<AbortController | null>(null);
   const resolvingRef = useRef(false);
   const [message, setMessage] = useState("");
-  const [cameraActive, setCameraActive] = useState(false);
-  const [cameraStarting, setCameraStarting] = useState(false);
   const [nfcState, setNfcState] = useState<"idle" | "starting" | "reading">("idle");
   const [resolving, setResolving] = useState(false);
   const mountedRef = useRef(true);
   const nfcSupported = useSyncExternalStore(subscribeNfc, getNfcSupport, getNfcServerSnapshot);
+  const camera = useQrCamera(videoRef, value => void resolveScan(value, "qr"), setMessage);
 
   const Reader = typeof window === "undefined"
     ? undefined
     : (window as Window & { NDEFReader?: NdefReaderConstructor }).NDEFReader;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      scannerRef.current?.stop();
+    const background = () => {
+      if (document.visibilityState !== "hidden") return;
       nfcAbortRef.current?.abort();
+      scanAbortRef.current?.abort();
+      resolvingRef.current = false;
+      setResolving(false);
+      setNfcState("idle");
+    };
+    document.addEventListener("visibilitychange", background);
+    return () => {
+      document.removeEventListener("visibilitychange", background);
+      mountedRef.current = false;
+      nfcAbortRef.current?.abort();
+      scanAbortRef.current?.abort();
+      resolvingRef.current = false;
+      setResolving(false);
+      setNfcState("idle");
+      setMessage("");
     };
   }, []);
 
   async function resolveScan(value: string, source: "qr" | "nfc") {
-    if (resolvingRef.current) return;
+    if (resolvingRef.current || !mountedRef.current || document.visibilityState === "hidden") return;
     resolvingRef.current = true;
     setResolving(true);
     setMessage("");
+    camera.stop();
+    nfcAbortRef.current?.abort();
+    setNfcState("idle");
+    const controller = new AbortController();
+    scanAbortRef.current = controller;
     try {
       const token = tokenFromScan(value);
       if (!token) {
@@ -66,46 +84,23 @@ export function PurchaseScanner() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token }),
+        signal: controller.signal,
       });
       const body = await response.json();
       if (!response.ok) throw new Error(formatApiError(body.error, "Kartu sa nepodarilo overiť."));
+      if (controller.signal.aborted || !mountedRef.current) return;
       router.push(`/app/nakupy/novy?partner=${encodeURIComponent(body.partnerId)}&source=${source}&tokenId=${encodeURIComponent(body.tokenId)}`);
     } catch (error) {
+      if (controller.signal.aborted || !mountedRef.current) return;
       setMessage(error instanceof TypeError
         ? "Kartu sa nepodarilo overiť. Skontrolujte pripojenie."
         : error instanceof Error ? error.message : "Skenovanie sa nepodarilo.");
-      resolvingRef.current = false;
-      setResolving(false);
-      stopCamera();
-      nfcAbortRef.current?.abort();
-      setNfcState("idle");
-    }
-  }
-
-  async function startCamera() {
-    if (cameraStarting || resolvingRef.current) return;
-    setMessage("");
-    if (!videoRef.current) return;
-    setCameraStarting(true);
-    try {
-      const reader = new BrowserQRCodeReader();
-      scannerRef.current = await reader.decodeFromVideoDevice(undefined, videoRef.current, (result) => {
-        if (result) void resolveScan(result.getText(), "qr");
-      });
-      if (!mountedRef.current) { scannerRef.current.stop(); return; }
-      setCameraActive(true);
-    } catch {
-      setMessage("Kameru sa nepodarilo spustiť. Overte povolenie kamery a použite HTTPS.");
-      stopCamera();
     } finally {
-      if (mountedRef.current) setCameraStarting(false);
+      if (scanAbortRef.current === controller) {
+        resolvingRef.current = false;
+        setResolving(false);
+      }
     }
-  }
-
-  function stopCamera() {
-    scannerRef.current?.stop();
-    scannerRef.current = null;
-    setCameraActive(false);
   }
 
   async function startNfc() {
@@ -122,11 +117,14 @@ export function PurchaseScanner() {
       nfcAbortRef.current?.abort();
       nfcAbortRef.current = controller;
       reader.addEventListener("reading", (event) => {
+        if (controller.signal.aborted || !mountedRef.current) return;
         const record = event.message.records.find((item) => item.recordType === "url");
         if (record) void resolveScan(decodeNdefUrl(record.data), "nfc");
         else setMessage("NFC karta neobsahuje URL záznam.");
       });
-      reader.addEventListener("readingerror", () => setMessage("NFC kartu sa nepodarilo prečítať."));
+      reader.addEventListener("readingerror", () => {
+        if (!controller.signal.aborted && mountedRef.current) setMessage("NFC kartu sa nepodarilo prečítať.");
+      });
       await reader.scan({ signal: controller.signal });
       if (controller.signal.aborted || !mountedRef.current) return;
       setNfcState("reading");
@@ -155,12 +153,12 @@ export function PurchaseScanner() {
           </div>
           <video ref={videoRef} aria-label="Náhľad kamery pri skenovaní QR kódu" className="mt-5 aspect-[4/3] w-full rounded-xl border border-white/15 bg-black object-cover" playsInline muted />
           <div className="mt-5">
-            {!cameraActive ? (
-              <button type="button" disabled={cameraStarting || resolving} aria-busy={cameraStarting} onClick={() => void startCamera()} className={`${primaryButton} w-full disabled:opacity-50`}>
-                <ActionLabel busy={cameraStarting} pending="Spúšťam kameru…">Zapnúť kameru</ActionLabel>
+            {!camera.active ? (
+              <button type="button" disabled={camera.starting || resolving} aria-busy={camera.starting} onClick={() => void camera.start()} className={`${primaryButton} w-full disabled:opacity-50`}>
+                <ActionLabel busy={camera.starting} pending="Spúšťam kameru…">Zapnúť kameru</ActionLabel>
               </button>
             ) : (
-              <button type="button" onClick={stopCamera} className={`${secondaryButton} w-full`}>Zastaviť kameru</button>
+              <button type="button" onClick={camera.stop} className={`${secondaryButton} w-full`}>Zastaviť kameru</button>
             )}
           </div>
           <p className="mt-3 text-xs leading-5 text-white/60">Skenovanie kamerou vyžaduje povolenie kamery a v produkcii HTTPS.</p>
