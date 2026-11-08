@@ -1242,6 +1242,44 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
       });
     }
 
+    await t.test("repeat manual purchase for the same partner starts a fresh form and never replays the previous purchase", async () => {
+      const sample = await prisma.partner.create({ data: {
+        companyId: company.id, code: "EP-RPT23", type: "installer",
+        displayName: "Repeated purchase partner", createdByUserId: admin.id,
+      } });
+      const page = await session(admin.email, true);
+      const keys: string[] = [];
+      page.on("request", request => {
+        if (request.method() === "POST" && new URL(request.url()).pathname === "/api/purchases") {
+          keys.push(request.postDataJSON().idempotencyKey);
+        }
+      });
+      await page.goto(`${origin}/app/nakupy/manualne`);
+      await page.getByLabel("Vyhľadať partnera", { exact: true }).fill(sample.displayName);
+      await page.getByRole("link", { name: /Repeated purchase partner/ }).click();
+      for (let purchase = 1; purchase <= 3; purchase++) {
+        await page.getByLabel("Suma nákupu s DPH", { exact: false }).waitFor();
+        assert.equal(await page.getByLabel("Suma nákupu s DPH", { exact: false }).inputValue(), "");
+        assert.equal(await page.getByRole("heading", { name: "Nákup bol uložený", exact: true }).count(), 0);
+        await page.getByLabel("Suma nákupu s DPH", { exact: false }).fill("235.00");
+        await page.getByRole("button", { name: "Uložiť nákup", exact: true }).click();
+        await page.getByRole("heading", { name: "Nákup bol uložený", exact: true }).waitFor();
+        assert.match(await page.locator("main").innerText(), new RegExp(`Nový súčet partnera: ${purchase * 191} bodov`));
+        assert.equal(await prisma.purchase.count({ where: { partnerId: sample.id } }), purchase);
+        if (purchase === 1) {
+          await page.getByRole("link", { name: "Skenovať ďalšieho", exact: true }).click();
+          await page.getByRole("link", { name: /Partner nemá kartu/ }).click();
+          await page.getByLabel("Vyhľadať partnera", { exact: true }).fill(sample.displayName);
+          await page.getByRole("link", { name: /Repeated purchase partner/ }).click();
+        } else if (purchase === 2) {
+          await page.getByRole("link", { name: "Ďalší nákup tohto partnera", exact: true }).click();
+        }
+      }
+      assert.equal(keys.length, 3);
+      assert.equal(new Set(keys).size, 3, "Distinct purchases need distinct idempotency keys");
+      await noOverflow(page);
+    });
+
     await t.test("390px seller manual purchase and public QR card keep VAT, points and privacy consistent", async () => {
       const page = await session(seller.email, true);
       await page.goto(`${origin}/app/nakupy/manualne`);

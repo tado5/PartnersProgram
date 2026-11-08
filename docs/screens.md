@@ -46,6 +46,14 @@ Ak suma dosiahne nastavený firemný limit → potvrdenie zapisujúceho
 Potvrdenie (suma, body, nový stav) → „Skenovať ďalšieho“
 ```
 
+Po uložení nákupu odkazy na potvrdení otvárajú nový dokument, aby sa pri návrate
+na rovnakého partnera neobnovil dokončený formulár z Router Cache.
+„Ďalší nákup tohto partnera“ otvára prázdny formulár s rovnakým spôsobom zápisu
+a znovu overí partnera aj prípadnú QR/NFC kartu. Každý nový nákup má nový
+idempotency kľúč; opakovanie nedokončenej požiadavky naďalej nevytvára duplicitu.
+Potvrdenie zobrazuje súčet zachytený pri uložení, nie opätovne pripočítaný
+predchádzajúci nákup k neskôr obnoveným údajom partnera.
+
 ### 1.2 Partner – kontrola bodov
 ```
 Partner naskenuje QR / priloží NFC svojím telefónom → /k/{token} → karta iba na čítanie

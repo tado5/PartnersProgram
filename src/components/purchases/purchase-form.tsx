@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRef, useState, type SubmitEvent } from "react";
+import { useRef, useState, type MouseEvent, type SubmitEvent } from "react";
 
 import { useCompanyApi } from "@/components/company-context";
 import { ValidatedForm } from "@/components/validated-form";
@@ -12,6 +12,7 @@ import { formatApiError } from "@/lib/validation-errors";
 type PurchaseSuccess = {
   id: string; amount: string; netAmount: string; vatAmount: string;
   vatRatePercent: string; points: number; purchasedAt: string;
+  totalPoints: number;
 };
 
 export function PurchaseForm({
@@ -79,7 +80,7 @@ export function PurchaseForm({
         return;
       }
       if (!response.ok) throw new Error(formatApiError(body.error, "Nákup sa nepodarilo uložiť."));
-      setSuccess(body.purchase);
+      setSuccess({ ...body.purchase, totalPoints: partner.totalPoints + body.purchase.points });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Požiadavku sa nepodarilo dokončiť.");
     } finally {
@@ -92,6 +93,13 @@ export function PurchaseForm({
     void save(confirmedAmount);
   }
 
+  function leaveCompletedPurchase(event: MouseEvent<HTMLAnchorElement>) {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    // Discard the completed form retained by the Router Cache.
+    event.preventDefault();
+    window.location.assign(event.currentTarget.href);
+  }
+
   if (success) {
     return (
       <section className="glass-surface rounded-xl border border-emerald-200 bg-emerald-50 p-6">
@@ -101,12 +109,13 @@ export function PurchaseForm({
         </p>
         <p className="mt-1 text-sm text-emerald-900">Použitá sadzba DPH: {success.vatRatePercent} %</p>
         <p className="mt-3 text-sm text-emerald-900">
-          Nový súčet partnera: <strong className="text-base font-bold">{partner.totalPoints + success.points} bodov</strong>
+          Nový súčet partnera: <strong className="text-base font-bold">{success.totalPoints} bodov</strong>
         </p>
         <div className="mt-5 flex flex-wrap gap-3">
-          <Link className={primaryButton} href="/app/sken">Skenovať ďalšieho</Link>
-          <Link className={secondaryButton} href="/app/nakupy">Prejsť na nákupy</Link>
-          <Link className={secondaryButton} href="/app">Úvodná stránka</Link>
+          <Link onClick={leaveCompletedPurchase} className={primaryButton} href="/app/sken">Skenovať ďalšieho</Link>
+          <Link onClick={leaveCompletedPurchase} className={secondaryButton} href={`/app/nakupy/novy?partner=${encodeURIComponent(partner.id)}&source=${source}${tokenId ? `&tokenId=${encodeURIComponent(tokenId)}` : ""}`}>Ďalší nákup tohto partnera</Link>
+          <Link onClick={leaveCompletedPurchase} className={secondaryButton} href="/app/nakupy">Prejsť na nákupy</Link>
+          <Link onClick={leaveCompletedPurchase} className={secondaryButton} href="/app">Úvodná stránka</Link>
         </div>
       </section>
     );
