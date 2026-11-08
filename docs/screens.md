@@ -251,6 +251,9 @@ Manuál obsahuje všeobecné návody bez údajov konkrétnych partnerov alebo
 tajomstiev. Čítanie nemení firemné údaje ani výber firmy. Zdroj obsahu je
 `src/lib/manual.ts`; pravidlo jeho aktualizácie pri zmenách správania pre všetky
 dotknuté roly je v koreňovom `AGENTS.md`.
+Spoločné návody vysvetľujú aj inštaláciu online aplikácie na plochu,
+voliteľné zapamätanie prihlásenia, opätovné zapnutie kamery a ďalší nákup
+toho istého partnera.
 
 ### Informovanie o spracúvaní údajov
 

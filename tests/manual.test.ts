@@ -65,3 +65,18 @@ test("lost-card and NFC instructions preserve history and distinguish independen
   assert.match(JSON.stringify(getManualArticle("admin", "nfc")), /sama fyzický čip nezapisuje/);
   assert.match(JSON.stringify(getManualArticle("admin", "ochrana-udajov")), /nespúšťajú automatické mazanie/);
 });
+
+test("all roles receive current installation, session, camera and repeat-purchase instructions", () => {
+  for (const role of ["seller", "admin", "superadmin"] satisfies ManualRole[]) {
+    const gettingStarted = JSON.stringify(getManualArticle(role, "zaciname"));
+    assert.match(gettingStarted, /Nainštalovať pre Android/);
+    assert.match(gettingStarted, /Safari/);
+    assert.match(gettingStarted, /potrebuje internet/);
+    const login = JSON.stringify(getManualArticle(role, "heslo"));
+    assert.match(login, /Zapamätať si prihlásenie/);
+    assert.match(login, /najviac 7 dní/);
+    assert.match(login, /spoločnom alebo verejnom zariadení/);
+    assert.match(JSON.stringify(getManualArticle(role, "skenovanie")), /znova zapnite/);
+    assert.match(JSON.stringify(getManualArticle(role, "zapis-nakupu")), /Ďalší nákup tohto partnera/);
+  }
+});

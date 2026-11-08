@@ -308,6 +308,13 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
           assert.equal(loaded?.status(), 200, `${role}: ${article.slug}`);
           await page.getByRole("heading", { name: article.title, exact: true, level: 1 }).waitFor();
           await page.getByRole("navigation", { name: "Navigácia manuálu" }).waitFor();
+          if (article.slug === "zaciname") {
+            await page.getByText("Inštalácia na plochu telefónu", { exact: true }).waitFor();
+          } else if (article.slug === "heslo") {
+            await page.getByText(/Relácia trvá najviac 7 dní/).waitFor();
+          } else if (article.slug === "zapis-nakupu") {
+            await page.getByText(/Ďalší nákup tohto partnera/).waitFor();
+          }
           await noOverflow(page);
           if (role === "superadmin") {
             assert.equal(await page.locator('main a[href^="/app/"]').count(), 0);
