@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const root = new URL("../", import.meta.url);
@@ -18,3 +18,4 @@ for (const path of ["public", ".next/static"]) {
   });
 }
 console.info("Standalone public and static assets prepared.");
+writeFileSync(new URL(".next/standalone/.hostcreator-maintenance-capable", root), "v1\n");

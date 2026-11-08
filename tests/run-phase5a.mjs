@@ -5,6 +5,10 @@ import { hash } from "@node-rs/argon2";
 import dotenv from "dotenv";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { createRequire } from "node:module";
+import { resetTestData } from "../scripts/hostcreator-maintenance-lib.mjs";
 
 // Isolated Docker DB only: never uses or resets existing development/test databases.
 const database = "europodlahy_5a_validation";
@@ -28,6 +32,7 @@ assert.equal(sql(`SELECT COUNT(*) FROM information_schema.SCHEMATA
 let server;
 let created = false;
 let shadowCreated = false;
+const maintenanceProbe = `${tmpdir()}/partners-maintenance-probe-${randomBytes(12).toString("hex")}`;
 try {
   sql(`CREATE DATABASE ${database} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`, false);
   created = true;
@@ -66,6 +71,7 @@ try {
   sql(readFileSync("prisma/migrations/20261015110000_company_logo/migration.sql", "utf8"));
   sql(readFileSync("prisma/migrations/20261015120000_privacy_notices/migration.sql", "utf8"));
   sql(readFileSync("prisma/migrations/20261020090000_reopenable_partner_tokens/migration.sql", "utf8"));
+  sql(readFileSync("prisma/migrations/20261108090000_deployment_operations/migration.sql", "utf8"));
   assert.equal(sql("SELECT amount,net_amount,vat_rate_percent,points FROM purchases WHERE id=5;").trim(), "19.99\t16.25\t23.00\t16");
   assert.equal(sql("SELECT COLUMN_DEFAULT IS NULL FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='purchases' AND COLUMN_NAME='vat_rate_percent';").trim(), "1");
   assert.equal(sql("SELECT COUNT(DISTINCT INDEX_NAME) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='audit_logs' AND INDEX_NAME='audit_logs_company_created_idx';").trim(), "1");
@@ -105,6 +111,7 @@ try {
     PHASE5A_PASSWORD: password, PHASE5A_TOKEN: tokenValue,
     BADGE_CRON_SECRET: badgeCronSecret, PHASE7_BADGE_CRON_SECRET: badgeCronSecret,
     RATE_LIMIT_LOGIN_PER_MIN: "1000", RATE_LIMIT_PUBLIC_PER_MIN: "1000",
+    HOSTCREATOR_MAINTENANCE_FILE: maintenanceProbe,
   };
   if (process.env.ACCEPTANCE_ALPINE === "1") {
     const containerId = execFileSync("docker", ["compose", "ps", "-q", "db"], { encoding: "utf8" }).trim();
@@ -136,6 +143,14 @@ try {
   }
   const loginPage = await fetch("http://127.0.0.1:3017/login");
   assert.equal(loginPage.status, 200);
+  writeFileSync(maintenanceProbe, "Validation maintenance", { flag: "wx", mode: 0o600 });
+  try {
+    const maintenanceResponse = await fetch("http://127.0.0.1:3017/api/health");
+    assert.equal(maintenanceResponse.status, 503);
+    assert.match(await maintenanceResponse.text(), /Prebieha údržba aplikácie/);
+  } finally {
+    rmSync(maintenanceProbe);
+  }
   const loginHtml = await loginPage.text();
   const assets = [...new Set([...loginHtml.matchAll(/(?:src|href)="([^"]+\.(?:js|css)(?:\?[^"]*)?)"/g)]
     .map((match) => match[1]).filter((path) => path.startsWith("/_next/static/")))];
@@ -233,6 +248,55 @@ try {
   console.info("Repeatable two-company seed and separate superadmin bootstrap passed.");
   console.info("Fresh Prisma migrate deploy and schema drift check passed.");
   console.info("MariaDB migration preservation, immutable audit and phase 5A regressions passed.");
+  if (existsSync("scripts/hostcreator-migration/node_modules/mariadb")) {
+    const require = createRequire(resolve("scripts/hostcreator-migration/package.json"));
+    const { createConnection } = require("mariadb");
+    const connection = await createConnection({
+      host: "127.0.0.1", port: 3308, user: "europodlahy_migrate",
+      password: values.DB_MIGRATE_PASSWORD, database,
+    });
+    const shared = mkdtempSync(`${tmpdir()}/partners-reset-`);
+    try {
+      await connection.query("UPDATE companies SET name = 'TestFirma ABC' WHERE id = (SELECT MIN(id) FROM companies)");
+      const [admin] = await connection.query("SELECT id, password_hash, email FROM users WHERE role = 'superadmin'");
+      const [company] = await connection.query("SELECT id, slug FROM companies WHERE name = 'TestFirma ABC'");
+      await assert.rejects(resetTestData(connection, shared, { approved: false, activeCapable: true }), /APPROVED/);
+      await assert.rejects(resetTestData(connection, shared, { approved: true, activeCapable: false }), /support first/);
+      const originalQuery = connection.query.bind(connection);
+      const [before] = await connection.query("SELECT COUNT(*) AS total FROM partners");
+      const [originalTriggerCount] = await connection.query("SELECT COUNT(*) AS total FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE()");
+      connection.query = (statement, ...args) => statement === "DELETE FROM `partners`"
+        ? Promise.reject(new Error("Injected reset failure")) : originalQuery(statement, ...args);
+      await assert.rejects(resetTestData(connection, shared, { approved: true, activeCapable: true }), /Injected/);
+      connection.query = originalQuery;
+      const [after] = await connection.query("SELECT COUNT(*) AS total FROM partners");
+      assert.equal(Number(after.total), Number(before.total), "Failed deletion must roll back");
+      const [triggerCount] = await connection.query("SELECT COUNT(*) AS total FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE()");
+      assert.equal(Number(triggerCount.total), Number(originalTriggerCount.total), "All original triggers restored after rollback");
+      await resetTestData(connection, shared, { approved: true, activeCapable: true });
+      const users = await connection.query("SELECT id, password_hash, email FROM users");
+      assert.equal(users.length, 1);
+      assert.deepEqual(users[0], admin);
+      const companies = await connection.query("SELECT id, slug FROM companies");
+      assert.equal(companies.length, 1);
+      assert.deepEqual(companies[0], company);
+      for (const table of ["partners", "partner_tokens", "purchases", "audit_logs", "company_privacy_notices", "company_privacy_receipts"]) {
+        const [row] = await connection.query(`SELECT COUNT(*) AS total FROM \`${table}\``);
+        assert.equal(Number(row.total), 0);
+      }
+      await connection.query("INSERT INTO audit_logs (action, entity_type) VALUES ('after.reset', 'company')");
+      await assert.rejects(connection.query("DELETE FROM audit_logs"), /immutable/);
+      await resetTestData(connection, shared, { approved: true, activeCapable: true });
+      const [row] = await connection.query("SELECT COUNT(*) AS total FROM audit_logs");
+      assert.equal(Number(row.total), 1, "Repeat deployment must not delete new records");
+      assert.equal(existsSync(`${shared}/.partners-maintenance`), false);
+      console.info("Approved one-time reset, exact survivors, restored immutable triggers and repeat safety passed.");
+    } finally {
+      if (existsSync(maintenanceProbe)) rmSync(maintenanceProbe);
+      await connection.end();
+      rmSync(shared, { recursive: true, force: true });
+    }
+  }
 } finally {
   if (server && server.exitCode === null) {
     server.kill("SIGTERM");

@@ -34,7 +34,7 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run test:unit
-      - run: node --test tests/hostcreator-deployment.test.mjs
+      - run: node --test tests/hostcreator-deployment.test.mjs tests/hostcreator-maintenance.test.mjs
       - run: npm run build
         env:
           APP_BASE_URL: https://partners.europodlahy.sk

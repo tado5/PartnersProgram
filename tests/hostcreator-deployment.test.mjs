@@ -167,6 +167,8 @@ fs.writeFileSync("cli-evidence.json", JSON.stringify({
 process.exit(process.argv[3] === "status" ? 1 : 0);
 `);
     const runner = join(release, "scripts/hostcreator-migrate.mjs");
+    await writeFile(join(release, "scripts/hostcreator-maintenance.mjs"),
+      `if (process.env.HOSTCREATOR_GITHUB_TOKEN) throw new Error("Token leaked to maintenance");\n`);
     const env = { ...process.env, HOSTCREATOR_GITHUB_TOKEN: "synthetic-token", MIGRATE_DATABASE_URL: "synthetic-build-url" };
     assert.throws(() => execFileSync(process.execPath, [runner, "deploy"], { env, stdio: "pipe" }), /requires HOSTCREATOR_MIGRATIONS_APPROVED/);
     await assert.rejects(readFile(evidence), /ENOENT/);

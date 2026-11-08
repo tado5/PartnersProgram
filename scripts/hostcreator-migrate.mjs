@@ -43,3 +43,20 @@ const result = spawnSync(process.execPath, [cli, "migrate", mode, "--config", "p
 if (result.error) throw result.error;
 if (result.signal) throw new Error(`Migration process stopped by ${result.signal}.`);
 process.exitCode = result.status ?? 1;
+if (mode === "deploy" && result.status === 0) {
+  const maintenance = spawnSync(process.execPath, [
+    resolve(root, "scripts/hostcreator-maintenance.mjs"),
+    process.env.HOSTCREATOR_TEST_RESET_APPROVED === "yes" ? "reset" : "configure",
+  ], {
+    cwd: root,
+    env: {
+      PATH: process.env.PATH,
+      HOME: process.env.HOME,
+      HOSTCREATOR_TEST_RESET_APPROVED: process.env.HOSTCREATOR_TEST_RESET_APPROVED,
+    },
+    stdio: "inherit",
+  });
+  if (maintenance.error) throw maintenance.error;
+  if (maintenance.signal) throw new Error(`Maintenance stopped by ${maintenance.signal}.`);
+  process.exitCode = maintenance.status ?? 1;
+}

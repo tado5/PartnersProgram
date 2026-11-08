@@ -12,6 +12,13 @@ enum UserRole {
   superadmin
 }
 
+model DeploymentOperation {
+  id          String   @id @db.VarChar(80)
+  completedAt DateTime @default(now()) @map("completed_at") @db.DateTime(3)
+
+  @@map("deployment_operations")
+}
+
 enum PartnerType {
   installer
   company

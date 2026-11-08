@@ -2,8 +2,15 @@ import { env } from "@/lib/env";
 import { allowPublicRequest, getClientIp } from "@/server/auth/rate-limit";
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 
 export function proxy(request: NextRequest) {
+  if (process.env.HOSTCREATOR_MAINTENANCE_FILE && existsSync(process.env.HOSTCREATOR_MAINTENANCE_FILE)) {
+    return new NextResponse("Prebieha údržba aplikácie. Skúste to neskôr.", {
+      status: 503,
+      headers: { "Cache-Control": "no-store", "Retry-After": "60" },
+    });
+  }
   const { pathname } = request.nextUrl;
 
   if (pathname === "/api/cron/close-monthly-badges") {

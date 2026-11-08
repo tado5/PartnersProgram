@@ -9,6 +9,8 @@ import { join, resolve } from "node:path";
 import dotenv from "dotenv";
 
 const root = process.cwd();
+const expectedMigrations = readdirSync(join(root, "prisma/migrations"))
+  .filter(name => statSync(join(root, "prisma/migrations", name)).isDirectory()).length;
 const suffix = randomBytes(6).toString("hex");
 const project = `partnersprogram-p3-${suffix}`;
 const database = `partnersprogram_p3_${suffix}`;
@@ -183,8 +185,8 @@ function verifyMigrationLedger(ledgerEnv) {
   const migrationNames = readdirSync(migrationDir)
     .filter((name) => /^\d{14}_/.test(name))
     .sort();
-  assert.equal(migrationNames.length, 11);
-  const failedMigration = migrationNames.at(-1);
+  assert.equal(migrationNames.length, expectedMigrations);
+  const failedMigration = migrationNames.find(name => name.endsWith("_reopenable_partner_tokens"));
   assert.ok(failedMigration);
   const failedSqlFile = join(migrationDir, failedMigration, "migration.sql");
   const originalSql = readFileSync(failedSqlFile, "utf8");
@@ -218,7 +220,7 @@ function verifyMigrationLedger(ledgerEnv) {
     SELECT COUNT(*) FROM ${ledgerDatabase}._prisma_migrations
     WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL;
   `).trim();
-  assert.equal(completedBeforeRepair, "10");
+  assert.equal(completedBeforeRepair, String(migrationNames.indexOf(failedMigration)));
 
   const tokenColumns = rootSql(`
     SELECT COUNT(*) FROM information_schema.COLUMNS
@@ -233,12 +235,13 @@ function verifyMigrationLedger(ledgerEnv) {
   assert.equal(tokenColumns, "2", "failed migration left its earlier DDL statements applied");
   assert.equal(tokenTriggers, "2", "failed migration left its earlier trigger DDL applied");
   prisma(["migrate", "resolve", "--applied", failedMigration, "--config", temporaryConfigFile], isolatedLedgerEnv);
+  prisma(["migrate", "deploy", "--config", temporaryConfigFile], isolatedLedgerEnv);
   const appliedRecovery = prisma(["migrate", "deploy", "--config", temporaryConfigFile], isolatedLedgerEnv);
   assert.match(appliedRecovery.stdout, /No pending migrations to apply/);
   assert.equal(rootSql(`
     SELECT COUNT(*) FROM ${ledgerDatabase}._prisma_migrations
     WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL;
-  `).trim(), "11");
+  `).trim(), String(expectedMigrations));
 
   const retryUrl = ledgerEnv.MIGRATE_DATABASE_URL.replace(`/${database}`, `/${retryDatabase}`);
   const cleanRetryEnv = {
@@ -257,16 +260,16 @@ function verifyMigrationLedger(ledgerEnv) {
   prisma(["migrate", "resolve", "--rolled-back", failedMigration, "--config", temporaryConfigFile], cleanRetryEnv);
   writeFileSync(failedSqlFile, originalSql);
   const resumed = prisma(["migrate", "deploy", "--config", temporaryConfigFile], cleanRetryEnv);
-  assert.match(resumed.stdout, /11 migrations? applied|Applying migration/);
+  assert.match(resumed.stdout, /migrations? applied|Applying migration/);
   assert.equal(rootSql(`
     SELECT COUNT(*) FROM ${retryDatabase}._prisma_migrations
     WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL;
-  `).trim(), "11");
+  `).trim(), String(expectedMigrations));
   assert.equal(rootSql(`
     SELECT COUNT(*) FROM ${retryDatabase}._prisma_migrations
     WHERE migration_name='${failedMigration}' AND rolled_back_at IS NOT NULL;
   `).trim(), "1");
-  assert.equal(rootSql(`SELECT COUNT(*) FROM ${retryDatabase}._prisma_migrations;`).trim(), "12");
+  assert.equal(rootSql(`SELECT COUNT(*) FROM ${retryDatabase}._prisma_migrations;`).trim(), String(expectedMigrations + 1));
   console.info("Prisma bookkeeping verified partial-DDL failure and applied-resolution, plus clean failure, rolled-back resolution and retry from a temporary migration copy.");
 }
 
@@ -355,10 +358,10 @@ async function main() {
   const migrationCount = runSql(`
     SELECT COUNT(*) FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL;
   `).trim();
-  assert.equal(migrationCount, "11");
+  assert.equal(migrationCount, String(expectedMigrations));
   const deployAgain = cli(["run", "db:deploy"], testEnv);
   assert.match(deployAgain.stdout, /No pending migrations to apply/);
-  assert.equal(runSql("SELECT COUNT(*) FROM _prisma_migrations;").trim(), "11");
+  assert.equal(runSql("SELECT COUNT(*) FROM _prisma_migrations;").trim(), String(expectedMigrations));
   const drift = prisma([
     "migrate", "diff",
     "--from-config-datasource",
@@ -381,13 +384,13 @@ async function main() {
       FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA='${database}';
   `).trim().split("\n");
   assert.deepEqual(objectCounts, [
-    "tables=11",
+    "tables=12",
     "foreign_keys=26",
-    "indexes=53",
+    "indexes=54",
     "checks=27",
     "triggers=audit_logs_before_delete,audit_logs_before_update,company_privacy_notices_no_delete,company_privacy_notices_no_update,company_privacy_receipts_no_delete,company_privacy_receipts_no_update,partner_tokens_active_type_insert,partner_tokens_active_type_update",
   ]);
-  console.info(`Prisma migrate deploy applied 11 migrations in ${migrationDurationMs} ms; second deploy was a no-op; parity passed (${objectCounts.join(", ")}).`);
+  console.info(`Prisma migrate deploy applied ${expectedMigrations} migrations in ${migrationDurationMs} ms; second deploy was a no-op; parity passed (${objectCounts.join(", ")}).`);
 
   docker([
     "exec", "--env", "DB_ROOT_PASSWORD_FILE=/run/secrets/db-root",

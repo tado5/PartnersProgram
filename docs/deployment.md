@@ -193,6 +193,43 @@ localStorage ani service workera; relácia používa zabezpečenú HttpOnly cook
 Odhlásenie odstráni reláciu na danom zariadení, zmena hesla a deaktivácia účtu
 ju zneplatnia pri ďalšej požiadavke. Na spoločných zariadeniach voľbu nepoužívajte.
 
+### Jednorazové vyčistenie testovacích dát a šifrovací kľúč
+
+`hostcreator-migrate.mjs deploy` po úspešných migráciách automaticky spustí
+`hostcreator-maintenance.mjs configure`. Existujúci `TOKEN_ENCRYPTION_KEY` zachová;
+ak chýba a DB neobsahuje šifrované tokeny, vygeneruje stabilný náhodný 32-bajtový
+kľúč priamo na serveri. Aktualizuje `shared/.env`, release `.env` aj standalone
+`.env` s právami 600, bez vypisovania tajomstiev. Ak už šifrované tokeny existujú
+bez kľúča, zastaví sa: treba obnoviť pôvodný kľúč, nie vygenerovať iný.
+Kľúč bezpečne zálohujte oddelene od DB. Vo WebAdmine nesmie byť prázdna alebo
+odlišná `TOKEN_ENCRYPTION_KEY`, ktorá by prepisovala hodnotu načítanú zo súboru.
+
+Reset **nie je bežná Prisma migrácia** a predvolene sa nikdy nespúšťa.
+Najprv nasadiť túto verziu s pôvodným Bash krokom, bez resetového schválenia.
+Tým sa nainštaluje maintenance ochrana aj kľúč. Až pri nasledujúcom deployi
+pridať `HOSTCREATOR_TEST_RESET_APPROVED=yes` k volaniu
+`node scripts/hostcreator-migrate.mjs deploy`; pôvodné dve migračné schválenia
+zostávajú. Reset odmietne beh, ak aktívna verzia ešte nemá maintenance ochranu.
+
+Reset zachová iba presne jedného aktívneho globálneho superadmina (pôvodné ID,
+heslo a e-mail) a jednu aktívnu firmu `TestFirma ABC` (porovnanie ignoruje medzery
+a veľkosť písmen). Pri nejednoznačnosti nič nemaže. Odstráni všetkých partnerov
+vrátane tejto firmy, tokeny, nákupy, odznaky, audit, publikované súkromie,
+potvrdenia a koncepty, ostatné účty aj firmy. Obchodné nastavenia zachovanej firmy
+ostávajú; odkaz na odstráneného autora sa nastaví na NULL. Údaje sú neobnoviteľné
+bez samostatnej zálohy a tento reset je určený výhradne na schválené testovacie dáta.
+
+Počas resetu aplikácia vracia 503 cez zdieľaný maintenance marker. SQL zámky
+blokujú súbežné zápisy; dáta a dokončovací záznam `deployment_operations` sa
+commitnú v jednej transakcii. Dočasne odstránené DELETE triggery sa obnovia
+z pôvodných definícií. Pri zlyhaní obnovy ostáva maintenance režim aktívny
+a súbor `shared/.partners-reset-triggers.json` umožní opakovaný recovery beh;
+tento súbor ani marker ručne nemažte. DB účet musí mať oprávnenia DELETE,
+LOCK TABLES, TRIGGER aj na obnovenie pôvodných DEFINER definícií.
+Po dokončení znovunasadenie nemení nové dáta, aj keby schválenie ostalo zapnuté.
+Schválenie po úspechu odstráňte z Bash kroku. Žiadne nové testovacie dáta sa
+automaticky nevytvárajú; seedovanie sa robí až po overení QR/NFC.
+
 Táto alternatíva nepotrebuje Docker ani build na hostingu. Iba push do `main` vytvorí
 artefakt `hostcreator-standalone-<commit>` s `runtime.tar.gz`, `commit.txt`,
 `SHA256SUMS` a `source-manifest.json`. Obsahuje standalone runtime vrátane statických súborov
