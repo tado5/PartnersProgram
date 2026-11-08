@@ -13,6 +13,7 @@ import {
 
 import { DocumentLink } from "@/components/company-context";
 import { ActionLabel } from "@/components/action-label";
+import { prepareMobileOverlay } from "@/lib/mobile-overlay";
 
 const icons = {
   dashboard: LayoutDashboard,
@@ -78,6 +79,7 @@ export function AppShell({
     }
   }
   const mobileMenuRef = useRef<HTMLElement>(null);
+  const mobileOverlayRef = useRef<HTMLDivElement>(null);
   const mobileTriggerRef = useRef<HTMLButtonElement>(null);
   const currentItem = items
     .filter((item) => pathname === item.href || pathname.startsWith(`${item.href}/`))
@@ -100,7 +102,7 @@ export function AppShell({
     const firstFocusable = mobileMenuRef.current?.querySelector<HTMLElement>(
       'a[href], button:not([disabled]), summary',
     );
-    firstFocusable?.focus();
+    firstFocusable?.focus({ preventScroll: true });
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setMobileOpen(false);
@@ -121,14 +123,22 @@ export function AppShell({
         first.focus();
       }
     };
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    const cleanupOverlay = mobileOverlayRef.current
+      ? prepareMobileOverlay(mobileOverlayRef.current)
+      : undefined;
+    const desktop = window.matchMedia("(min-width: 1024px)");
+    const closeOnDesktop = () => {
+      if (desktop.matches) setMobileOpen(false);
+    };
+    closeOnDesktop();
+    desktop.addEventListener("change", closeOnDesktop);
     window.addEventListener("keydown", onKey);
     return () => {
-      document.body.style.overflow = previousOverflow;
+      cleanupOverlay?.();
+      desktop.removeEventListener("change", closeOnDesktop);
       window.removeEventListener("keydown", onKey);
-      if (previouslyFocused?.isConnected) previouslyFocused.focus();
-      else trigger?.focus();
+      if (previouslyFocused?.isConnected) previouslyFocused.focus({ preventScroll: true });
+      else trigger?.focus({ preventScroll: true });
     };
   }, [mobileOpen]);
 
@@ -155,7 +165,7 @@ export function AppShell({
 
   function nav(compact: boolean) {
     return (
-      <nav aria-label="Hlavné menu" className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
+      <nav aria-label="Hlavné menu" className="overlay-scroll flex-1 space-y-1 overflow-y-auto px-3 py-4">
         {items.map((item) => {
           const Icon = icons[item.icon];
           const active = isActive(pathname, item);
@@ -212,7 +222,7 @@ export function AppShell({
 
   function footer(compact: boolean) {
     return (
-      <div className="space-y-2 border-t border-stone-200 px-3 py-4">
+      <div className="shrink-0 space-y-2 border-t border-stone-200 px-3 py-4">
         {compact ? null : (
           <div className="px-3 text-sm">
             <p className="truncate font-medium text-stone-900">{userName}</p>
@@ -221,7 +231,6 @@ export function AppShell({
         )}
         {footerExtra && !compact ? <div className="px-3">{footerExtra}</div> : null}
         <button
-          ref={mobileTriggerRef}
           type="button"
           disabled={signingOut}
           aria-busy={signingOut}
@@ -240,12 +249,12 @@ export function AppShell({
   }
 
   return (
-    <div className="min-h-[100dvh]">
+    <div className="screen-page">
       {/* Desktop sidebar */}
       <aside
-        className={`glass-surface fixed inset-y-0 left-0 z-30 hidden flex-col border-r border-white/15 transition-[width] duration-200 lg:flex ${collapsed ? "w-[4.5rem]" : "w-64"}`}
+        className={`glass-surface safe-drawer fixed inset-y-0 left-0 z-30 hidden flex-col border-r border-white/15 transition-[width] duration-200 lg:flex ${collapsed ? "w-[4.5rem]" : "w-64"}`}
       >
-        <div className={`flex h-16 items-center border-b border-white/15 px-4 ${collapsed ? "justify-center" : "justify-between"}`}>
+        <div className={`flex h-16 shrink-0 items-center border-b border-white/15 px-4 ${collapsed ? "justify-center" : "justify-between"}`}>
           {collapsed ? null : <Link href={brandHref}>{brand}</Link>}
           <button
             type="button"
@@ -262,8 +271,9 @@ export function AppShell({
       </aside>
 
       {/* Mobile top bar */}
-      <header className="glass-surface sticky top-0 z-[100] flex h-14 items-center gap-3 border-b border-white/15 px-4 lg:hidden">
+      <header className="glass-surface mobile-header sticky top-0 z-[100] flex h-14 items-center gap-3 border-b border-white/15 px-4 lg:hidden">
         <button
+          ref={mobileTriggerRef}
           type="button"
           onClick={() => setMobileOpen(true)}
           aria-label="Otvoriť menu"
@@ -278,15 +288,15 @@ export function AppShell({
 
       {/* Mobile drawer */}
       {mobileOpen ? (
-        <div className="fixed inset-0 z-[var(--z-overlay)] lg:hidden" role="dialog" aria-modal="true" aria-label="Menu navigácie" id="mobile-menu">
+        <div ref={mobileOverlayRef} className="mobile-overlay fixed inset-0 z-[var(--z-overlay)] lg:hidden" role="dialog" aria-modal="true" aria-label="Menu navigácie" id="mobile-menu">
           <button
             type="button"
             aria-label="Zavrieť menu"
             className="absolute inset-0 bg-stone-950/50"
             onClick={() => setMobileOpen(false)}
           />
-          <aside ref={mobileMenuRef} className="glass-surface relative flex h-full w-72 max-w-[85vw] flex-col border-r border-white/15">
-            <div className="flex h-14 items-center justify-between border-b border-white/15 px-4">
+          <aside ref={mobileMenuRef} className="glass-surface safe-drawer relative flex h-full w-72 max-w-[85vw] flex-col border-r border-white/15">
+            <div className="flex h-14 shrink-0 items-center justify-between border-b border-white/15 px-4">
               <Link href={brandHref}>{brand}</Link>
               <button
                 type="button"
@@ -305,7 +315,7 @@ export function AppShell({
 
       <div className={`transition-[padding] duration-200 ${collapsed ? "lg:pl-[4.5rem]" : "lg:pl-64"}`}>
         {banner}
-        <div className="glass-surface sticky top-0 z-[100] hidden h-16 items-center justify-between border-x-0 border-t-0 px-6 lg:flex">
+        <div className="glass-surface desktop-header sticky top-0 z-[100] hidden h-16 items-center justify-between border-x-0 border-t-0 px-6 lg:flex">
           <nav aria-label="Drobečková navigácia" className="flex min-w-0 items-center gap-2 text-sm">
             <Link href={brandHref} className="shrink-0 text-white/65 transition hover:text-white">
               {brandSuffix ?? "Pracovný priestor"}
@@ -329,7 +339,7 @@ export function AppShell({
             </span>
           </div>
         </div>
-        <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8">{children}</main>
+        <main className="app-content mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8">{children}</main>
       </div>
     </div>
   );

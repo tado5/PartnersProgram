@@ -168,6 +168,15 @@ Do not introduce additional brand colors.
 
 ## Background
 
+### Mobile browser and installed PWA baseline
+
+- The root viewport uses device width, initial scale 1 and `viewport-fit=cover`; manual pinch zoom remains enabled. Chromium uses `interactive-widget=resizes-content`; Safari ignores this hint, so overlays also follow the Visual Viewport API.
+- On coarse-pointer devices, inputs, selects, textareas and editable content use at least 16 CSS px, including controls with small Tailwind text utilities. Do not scale form controls down with transforms.
+- Shared public pages, content containers, navigation and modal overlays respect the safe-area insets in portrait and landscape. Centered password pages retain their normal vertical spacing.
+- Full pages use stable `svh` minimum heights, and touch devices avoid fixed background attachment. Overlays use the current visual viewport height/offset for keyboard visibility, with a `dvh` fallback; viewport adjustment is suspended during native pinch zoom.
+- Mobile drawers and card dialogs share a reference-counted fixed-body scroll lock, restore existing inline styles and the original scroll position, and keep their own content scrollable. Focus restoration must use `preventScroll`. Opening a drawer and resizing to desktop closes it and releases the lock.
+- Run `node --import tsx --test tests/mobile-ui.test.ts` for CSS and overlay regressions in mobile/desktop Chromium. These checks emulate viewport changes, not a real OS keyboard. Also check installed PWA mode on physical iOS and Android devices: input focus/blur, keyboard dismissal, long modal scrolling, menu close, rotation and pinch zoom.
+
 Use a vibrant layered background with:
 
 - A base background color.
@@ -256,7 +265,7 @@ Layout
 •	Use a two-column desktop structure: navigation plus main content.
 •	Collapse the sidebar into a drawer or bottom navigation on mobile.
 •	Do not create horizontal page overflow.
-•	Do not use  h-screen ; use  min-h-[100dvh] .
+•	Use the shared screen-page class (100svh with a 100vh fallback) for full-page minimum height; reserve dynamic viewport sizing for overlays.
 Application Structure
 The interface should support this general structure:
 1.	Application shell

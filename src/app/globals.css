@@ -36,6 +36,10 @@
   --z-overlay: 300;
   --z-modal: 400;
   --z-toast: 500;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
 }
 
 @theme inline {
@@ -68,10 +72,15 @@
 html {
   min-height: 100%;
   background: var(--background);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  scroll-padding-top: calc(4.5rem + var(--safe-top));
+  scroll-padding-bottom: calc(1rem + var(--safe-bottom));
 }
 
 body {
-  min-height: 100dvh;
+  min-height: 100vh;
+  min-height: 100svh;
   margin: 0;
   overflow-x: hidden;
   background:
@@ -104,6 +113,111 @@ input,
 select,
 textarea {
   font: inherit;
+}
+
+button,
+a,
+summary {
+  touch-action: manipulation;
+}
+
+@media (any-pointer: coarse) {
+  body {
+    background-attachment: scroll;
+  }
+
+  /* Unlayered rules also cover controls using Tailwind text-sm utilities. */
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea,
+  [contenteditable="true"] {
+    font-size: max(16px, 1rem);
+  }
+
+  input,
+  select,
+  textarea {
+    scroll-margin-block: 5rem 2rem;
+  }
+}
+
+.screen-page {
+  min-height: 100vh;
+  min-height: 100svh;
+}
+
+.public-page {
+  padding-top: var(--safe-top);
+  padding-bottom: var(--safe-bottom);
+  padding-left: max(1rem, var(--safe-left));
+  padding-right: max(1rem, var(--safe-right));
+}
+
+.centered-public-page {
+  padding-top: calc(2rem + var(--safe-top));
+  padding-bottom: calc(2rem + var(--safe-bottom));
+}
+
+.mobile-header {
+  height: calc(3.5rem + var(--safe-top));
+  padding-top: var(--safe-top);
+  padding-left: max(1rem, var(--safe-left));
+  padding-right: max(1rem, var(--safe-right));
+}
+
+.desktop-header {
+  height: calc(4rem + var(--safe-top));
+  padding-top: var(--safe-top);
+  padding-right: max(1.5rem, var(--safe-right));
+}
+
+.safe-drawer {
+  padding-top: var(--safe-top);
+  padding-bottom: var(--safe-bottom);
+  padding-left: var(--safe-left);
+}
+
+.app-content {
+  padding-left: max(1rem, var(--safe-left));
+  padding-right: max(1rem, var(--safe-right));
+  padding-bottom: calc(1.5rem + var(--safe-bottom));
+}
+
+.mobile-overlay {
+  top: var(--overlay-top, 0px);
+  bottom: auto;
+  height: 100vh;
+  height: var(--overlay-height, 100dvh);
+  overscroll-behavior: contain;
+}
+
+.modal-overlay {
+  padding-top: max(1rem, var(--safe-top));
+  padding-right: max(1rem, var(--safe-right));
+  padding-bottom: max(1rem, var(--safe-bottom));
+  padding-left: max(1rem, var(--safe-left));
+}
+
+.overlay-scroll {
+  min-height: 0;
+  overscroll-behavior: contain;
+}
+
+@media (min-width: 640px) {
+  .public-page,
+  .app-content {
+    padding-left: max(1.5rem, var(--safe-left));
+    padding-right: max(1.5rem, var(--safe-right));
+  }
+
+  .app-content {
+    padding-bottom: calc(2rem + var(--safe-bottom));
+  }
+
+  .centered-public-page {
+    padding-top: calc(3rem + var(--safe-top));
+    padding-bottom: calc(3rem + var(--safe-bottom));
+  }
 }
 
 button,
@@ -236,12 +350,14 @@ input[type="checkbox"][aria-invalid="true"] {
 .page-container {
   width: min(100%, var(--content-max-width));
   margin-inline: auto;
-  padding-inline: 1rem;
+  padding-left: max(1rem, var(--safe-left));
+  padding-right: max(1rem, var(--safe-right));
 }
 
 @media (min-width: 640px) {
   .page-container {
-    padding-inline: 1.5rem;
+    padding-left: max(1.5rem, var(--safe-left));
+    padding-right: max(1.5rem, var(--safe-right));
   }
 }
 

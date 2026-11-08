@@ -31,7 +31,7 @@ const features = [
 
 export default function Home() {
   return (
-    <main className="relative isolate flex min-h-[100dvh] flex-col overflow-hidden px-4 sm:px-6">
+    <main className="screen-page public-page relative isolate flex flex-col overflow-hidden px-4 sm:px-6">
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
         <div className="absolute -left-40 top-24 size-[28rem] rounded-full bg-primary/20 blur-[110px]" />
         <div className="absolute -right-36 top-1/3 size-[30rem] rounded-full bg-secondary/20 blur-[120px]" />

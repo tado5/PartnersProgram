@@ -8,6 +8,7 @@ import { ActionLabel } from "@/components/action-label";
 import { ValidatedForm } from "@/components/validated-form";
 import { formatApiError } from "@/lib/validation-errors";
 import { PartnerCardPreview } from "@/components/partners/partner-card-preview";
+import { prepareMobileOverlay } from "@/lib/mobile-overlay";
 
 type Token = {
   id: string;
@@ -78,7 +79,10 @@ export function PartnerTokenManager({
       ? document.activeElement
       : null;
     const focusFallback = sectionRef.current;
-    issuedCloseRef.current?.focus();
+    const cleanupOverlay = issuedDialogRef.current
+      ? prepareMobileOverlay(issuedDialogRef.current)
+      : undefined;
+    issuedCloseRef.current?.focus({ preventScroll: true });
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
@@ -115,14 +119,15 @@ export function PartnerTokenManager({
     document.addEventListener("keydown", handleKeyDown);
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
+      cleanupOverlay?.();
       const trigger = issuedTriggerRef.current ?? previouslyFocused;
       if (!trigger?.isConnected || (trigger instanceof HTMLButtonElement && trigger.disabled)) {
         const activeButton = focusFallback?.querySelector<HTMLButtonElement>(
           'button[data-card-action]:not([disabled])',
         );
-        (activeButton ?? focusFallback)?.focus();
+        (activeButton ?? focusFallback)?.focus({ preventScroll: true });
       } else {
-        trigger?.focus();
+        trigger?.focus({ preventScroll: true });
       }
     };
   }, [cardOpen, createOpen]);
@@ -130,7 +135,7 @@ export function PartnerTokenManager({
   useEffect(() => {
     if (!pending && (cardOpen || createOpen) &&
         !issuedDialogRef.current?.contains(document.activeElement)) {
-      issuedCloseRef.current?.focus();
+      issuedCloseRef.current?.focus({ preventScroll: true });
     }
   }, [pending, cardOpen, createOpen]);
 
@@ -346,7 +351,7 @@ export function PartnerTokenManager({
         <div role="dialog" aria-modal="true" aria-labelledby="create-access-title"
           aria-describedby="create-access-description" aria-busy={pending}
           ref={issuedDialogRef} tabIndex={-1}
-          className="fixed inset-0 z-[400] flex items-center justify-center overflow-y-auto bg-stone-950/60 p-4">
+          className="mobile-overlay modal-overlay fixed inset-0 z-[400] flex items-center justify-center overflow-y-auto bg-stone-950/60 p-4">
           <div className="data-surface my-auto w-full max-w-md rounded-xl p-5 sm:p-6">
             <div className="flex items-start justify-between gap-4">
               <h2 id="create-access-title" className="text-xl font-semibold">
@@ -453,7 +458,7 @@ export function PartnerTokenManager({
           aria-describedby="issued-token-description"
           aria-modal="true"
           aria-busy={pending}
-          className="fixed inset-0 z-[400] flex items-center justify-center overflow-y-auto bg-stone-950/60 p-4"
+          className="mobile-overlay modal-overlay fixed inset-0 z-[400] flex items-center justify-center overflow-y-auto bg-stone-950/60 p-4"
           role="dialog"
           ref={issuedDialogRef}
           tabIndex={-1}

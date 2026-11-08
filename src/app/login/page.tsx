@@ -39,7 +39,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
     (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]");
 
   return (
-    <main className="relative isolate flex min-h-[100dvh] flex-col overflow-hidden px-4 sm:px-6">
+    <main className="screen-page public-page relative isolate flex flex-col overflow-hidden px-4 sm:px-6">
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
         <div className="absolute -left-48 top-1/4 size-[32rem] rounded-full bg-primary/20 blur-[120px]" />
         <div className="absolute -right-48 bottom-0 size-[34rem] rounded-full bg-secondary/20 blur-[130px]" />

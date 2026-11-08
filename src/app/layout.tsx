@@ -10,7 +10,13 @@ export const metadata: Metadata = {
   icons: { apple: "/pwa/apple-touch-icon.png" },
 };
 
-export const viewport: Viewport = { themeColor: "#0b1020" };
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  interactiveWidget: "resizes-content",
+  themeColor: "#0b1020",
+};
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
