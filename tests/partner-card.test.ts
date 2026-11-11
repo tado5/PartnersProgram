@@ -1,4 +1,9 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { test } from "node:test";
 import { inflateSync } from "node:zlib";
 import QRCode from "qrcode";
@@ -7,6 +12,8 @@ import { BinaryBitmap, HybridBinarizer, QRCodeReader, RGBLuminanceSource } from 
 
 import { renderPartnerCardSvg, type PartnerCardArtwork } from "../src/lib/partner-card";
 import { renderPartnerCardPdf } from "../src/server/partner-card-pdf";
+import { cardFontPath, renderCardTextPaths } from "../src/server/partner-card-font";
+import { openSync } from "fontkit";
 
 const cardUrl = `https://partners.example.invalid/k/${"A".repeat(43)}`;
 
@@ -33,13 +40,72 @@ test("card artwork escapes names, preserves dimensions and never embeds external
 });
 
 test("the QR on the complete rear artwork can be decoded at print size", async () => {
-  const svg = renderPartnerCardSvg(await artwork(), "back");
+  const svg = renderPartnerCardSvg(await artwork(), "back", renderCardTextPaths);
   const { data, info } = await sharp(Buffer.from(svg), { density: 300 }).flatten({ background: "white" })
     .greyscale().raw().toBuffer({ resolveWithObject: true });
   const bitmap = new BinaryBitmap(new HybridBinarizer(new RGBLuminanceSource(
     new Uint8ClampedArray(data), info.width, info.height,
   )));
   assert.equal(new QRCodeReader().decode(bitmap).getText(), cardUrl);
+});
+
+test("bundled regular and bold fonts cover Slovak text and preserve fitting and spacing", () => {
+  for (const filename of [cardFontPath, cardFontPath.replace(".ttf", "-Bold.ttf")]) {
+    const font = openSync(filename);
+    assert.ok(!("fonts" in font));
+    for (const character of "ĽščťžýáíéúäňôŕĺĎŤŇČŠŽÝÁÍÉÚÄÔŔĹ ×·&<>\"'") {
+      assert.ok(font.hasGlyphForCodePoint(character.codePointAt(0)!), character);
+    }
+  }
+  const regular = renderCardTextPaths("Ľuboš Černý & <partner>", 10, 20, 30, 720);
+  const bold = renderCardTextPaths("Ľuboš Černý & <partner>", 10, 20, 30, 720, 'font-weight="700"');
+  assert.match(regular, /<path /);
+  assert.doesNotMatch(regular, /<text|<partner>/);
+  assert.notEqual(regular.match(/d="([^"]+)"/)?.[1], bold.match(/d="([^"]+)"/)?.[1]);
+  const long = renderCardTextPaths("Dlhé meno ".repeat(20), 0, 0, 30, 720);
+  const scale = Number(long.match(/scale\(([\d.]+)/)?.[1]);
+  assert.ok(scale > 0 && scale < 30 / 2048);
+  assert.notEqual(renderCardTextPaths("PARTNER", 0, 0, 13, 720),
+    renderCardTextPaths("PARTNER", 0, 0, 13, 720, 'letter-spacing="2"'));
+});
+
+test("card artwork rasterizes identically without any system font directories", async () => {
+  const input = await artwork();
+  const hashes = [];
+  for (const side of ["front", "back"] as const) {
+    const svg = renderPartnerCardSvg(input, side, renderCardTextPaths);
+    assert.doesNotMatch(svg, /<text\b/);
+    const png = await sharp(Buffer.from(svg), { density: 300 }).png().toBuffer();
+    hashes.push(createHash("sha256").update(png).digest("hex"));
+  }
+  const directory = await mkdtemp(path.join(tmpdir(), "partner-card-fonts-"));
+  try {
+    const config = path.join(directory, "fonts.conf");
+    await writeFile(config, '<?xml version="1.0"?><!DOCTYPE fontconfig SYSTEM "fonts.dtd"><fontconfig></fontconfig>');
+    const output = execFileSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", `
+      import assert from "node:assert/strict";
+      import { readFileSync } from "node:fs";
+      import { createHash } from "node:crypto";
+      import sharp from "sharp";
+      import { renderPartnerCardSvg } from "./src/lib/partner-card.ts";
+      import { renderCardTextPaths } from "./src/server/partner-card-font.ts";
+      const input = JSON.parse(readFileSync(0, "utf8"));
+      const hashes = [];
+      for (const side of ["front", "back"]) {
+        const svg = renderPartnerCardSvg(input, side, renderCardTextPaths);
+        assert.doesNotMatch(svg, /<text\\b/);
+        const png = await sharp(Buffer.from(svg), { density: 300 }).png().toBuffer();
+        hashes.push(createHash("sha256").update(png).digest("hex"));
+      }
+      process.stdout.write(JSON.stringify(hashes));
+    `], {
+      input: JSON.stringify(input), encoding: "utf8", timeout: 30_000,
+      env: { ...process.env, FONTCONFIG_FILE: config, FONTCONFIG_PATH: directory },
+    });
+    assert.deepEqual(JSON.parse(output), hashes);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 test("card PDF has two physical card-sized pages and A4 has two centered print pages", async () => {

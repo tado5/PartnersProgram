@@ -1,20 +1,20 @@
 import PDFDocument from "pdfkit";
-import path from "node:path";
 import sharp from "sharp";
 
 import { CARD_HEIGHT_MM, CARD_WIDTH_MM, renderPartnerCardSvg, type PartnerCardArtwork } from "@/lib/partner-card";
+import { cardFontPath, renderCardTextPaths } from "@/server/partner-card-font";
 
 const mm = (value: number) => value * 72 / 25.4;
 
 export async function renderPartnerCardPdf(input: PartnerCardArtwork, format: "card" | "a4"): Promise<Buffer> {
   const images = await Promise.all((["front", "back"] as const).map((side) =>
-    sharp(Buffer.from(renderPartnerCardSvg(input, side)), { density: 600 }).png().toBuffer(),
+    sharp(Buffer.from(renderPartnerCardSvg(input, side, renderCardTextPaths)), { density: 600 }).png().toBuffer(),
   ));
   const width = mm(CARD_WIDTH_MM);
   const height = mm(CARD_HEIGHT_MM);
   const doc = new PDFDocument({
     autoFirstPage: false,
-    font: path.join(process.cwd(), "node_modules", "dejavu-fonts-ttf", "ttf", "DejaVuSans.ttf"),
+    font: cardFontPath,
     info: { Title: `${input.partnerCode} - Partnerská karta`, Creator: "PartnersProgram" },
   });
   const chunks: Buffer[] = [];

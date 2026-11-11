@@ -66,6 +66,15 @@ test("lost-card and NFC instructions preserve history and distinguish independen
   assert.match(JSON.stringify(getManualArticle("admin", "ochrana-udajov")), /nespúšťajú automatické mazanie/);
 });
 
+test("card printing guides explain bundled fonts for both management roles", () => {
+  for (const role of ["admin", "superadmin"] satisfies ManualRole[]) {
+    const content = JSON.stringify(getManualArticle(role, "qr-karty"));
+    assert.match(content, /pribalené písmo vrátane slovenskej diakritiky/);
+    assert.match(content, /na tlač netreba inštalovať písma/);
+  }
+  assert.equal(getManualArticle("seller", "qr-karty"), undefined);
+});
+
 test("all roles receive current installation, session, camera and repeat-purchase instructions", () => {
   for (const role of ["seller", "admin", "superadmin"] satisfies ManualRole[]) {
     const gettingStarted = JSON.stringify(getManualArticle(role, "zaciname"));

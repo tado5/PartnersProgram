@@ -229,7 +229,7 @@ export const manualArticles: readonly ManualArticle[] = [
           "Tlačte v skutočnej veľkosti, na 100 %, bez prispôsobenia strane. Skontrolujte kontrolnú mierku a obojstrannú tlač najprv skúšobným hárkom.",
           "Po vytlačení overte čitateľnosť QR. Počas prípravy PDF počkajte na dokončenie; pri chybe čítajte správu a operáciu opakujte až po jej skončení.",
         ],
-        result: "Opätovná tlač zachová odkaz aj platnosť pôvodnej karty.",
+        result: "Opätovná tlač zachová odkaz aj platnosť pôvodnej karty. PDF používa pribalené písmo vrátane slovenskej diakritiky; na tlač netreba inštalovať písma.",
         warning: "Export nie je univerzálny výrobný podklad pre každú tlačiareň kariet; požiadavky tlačiarne overte osobitne. Pri strate použite náhradu, nie iba ďalšiu tlač.",
       },
     ],
