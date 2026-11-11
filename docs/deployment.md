@@ -416,7 +416,7 @@ Tieto príkazy spúšťajú DB/migrácie alebo menia DB oprávnenia. Na existuj�
 - [ ] HTTPS na produkčnej doméne funguje.
 - [ ] `TOKEN_ENCRYPTION_KEY` je nastavený, stabilný a samostatne zálohovaný; opätovné otvorenie tokenu funguje.
 - [ ] Testovací QR a NFC token otvoria správnu kartu na iPhone aj Androide.
-- [ ] Opätovná tlač z otvorených detailov nevydá nový token; PDF oboch strán má 85,60 × 53,98 mm alebo kartu uprostred A4 s orezovými značkami. Tlač 100 %, skúšobný hárok; výstup je 600 dpi RGB bez spadávky/CMYK profilu, nie univerzálny výrobný podklad.
+- [ ] Opätovná tlač z otvorených detailov nevydá nový token; PDF oboch strán má 85,60 × 53,98 mm alebo kartu uprostred A4 s orezovými značkami. Tlač 100 %, skúšobný hárok; výstup je 600 dpi RGB bez spadávky/CMYK profilu, nie univerzálny výrobný podklad. Písma DejaVu Sans a Bold vrátane licencie sú v `src/assets/fonts` a cez `outputFileTracingIncludes` aj v standalone balíku. Text karty sa pred rasterizáciou prevedie na krivky pomocou fontkit; nezávisí od systémových písiem/fontconfig na HostCreators. PDFKit používa pribalený základný rez aj na pokyny A4.
 - [ ] NFC URL zapísať ako NDEF URI na NTAG213/215 kompatibilným zapisovačom, overiť načítanie a až potom uzamknúť; aplikácia čip automaticky nezapisuje.
 - [ ] QR/NFC, zdieľané odkazy a exporty chrániť: bearer odkaz sprístupňuje verejnú históriu nákupov, nikdy právo na zápis.
 - [ ] Zálohy bežia.

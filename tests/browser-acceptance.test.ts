@@ -958,6 +958,14 @@ test("browser acceptance on isolated two-company fixtures", { timeout: 300_000 }
         const pdf = Buffer.concat(chunks);
         assert.equal(pdf.subarray(0, 5).toString(), "%PDF-");
         assert.match(pdf.toString("latin1"), /\/Count 2\b/);
+        const images = [...pdf.toString("latin1").matchAll(/\/Subtype \/Image\b[\s\S]*?\/Width (\d+)[\s\S]*?\/Height (\d+)/g)];
+        assert.ok(images.length >= 2, "both card sides must include rasterized artwork");
+        for (const image of images) {
+          assert.ok(Math.abs(Number(image[1]) / Number(image[2]) - 85.6 / 53.98) < 0.01);
+        }
+        if (label === "PDF na tlač · A4") {
+          assert.match(pdf.toString("latin1"), /\/FontName \/[^\s]*DejaVuSans/);
+        }
       }
       assert.equal(await prisma.partnerToken.count({ where: { partnerId: partner.id } }), before + 1);
       const original = await prisma.partnerToken.findFirst({
